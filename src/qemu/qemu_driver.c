@@ -6894,12 +6894,12 @@ qemuDomainAttachDeviceConfig(virDomainDef *vmdef,
         break;
 
     case VIR_DOMAIN_DEVICE_IOMMU:
-        if (vmdef->iommu) {
+        if (vmdef->iommu && vmdef->niommus > 0) {
             virReportError(VIR_ERR_OPERATION_INVALID, "%s",
                            _("domain already has an iommu device"));
             return -1;
         }
-        vmdef->iommu = g_steal_pointer(&dev->data.iommu);
+        VIR_APPEND_ELEMENT(vmdef->iommu, vmdef->niommus, dev->data.iommu);
         break;
 
     case VIR_DOMAIN_DEVICE_VIDEO:
@@ -7113,12 +7113,12 @@ qemuDomainDetachDeviceConfig(virDomainDef *vmdef,
         break;
 
     case VIR_DOMAIN_DEVICE_IOMMU:
-        if (!vmdef->iommu) {
+        if ((idx = virDomainIOMMUDefFind(vmdef, dev->data.iommu)) < 0) {
             virReportError(VIR_ERR_OPERATION_FAILED, "%s",
                            _("matching iommu device not found"));
             return -1;
         }
-        g_clear_pointer(&vmdef->iommu, virDomainIOMMUDefFree);
+        VIR_DELETE_ELEMENT(vmdef->iommu, idx, vmdef->niommus);
         break;
 
     case VIR_DOMAIN_DEVICE_VIDEO:
