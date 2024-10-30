@@ -6190,6 +6190,7 @@
           <value>intel</value>
           <value>smmuv3</value>
           <value>virtio</value>
+          <value>smmuv3Dev</value>
         </choice>
       </attribute>
       <interleave>
@@ -6232,9 +6233,6 @@
         </optional>
         <optional>
           <ref name="address"/>
-        </optional>
-        <optional>
-          <ref name="alias"/>
         </optional>
       </interleave>
     </element>
@@ -6867,9 +6865,9 @@
         <zeroOrMore>
           <ref name="panic"/>
         </zeroOrMore>
-        <optional>
+        <zeroOrMore>
           <ref name="iommu"/>
-        </optional>
+        </zeroOrMore>
         <optional>
           <ref name="vsock"/>
         </optional>

@@ -851,7 +851,12 @@ qemuValidateDomainVCpuTopology(const virDomainDef *def, virQEMUCaps *qemuCaps)
                            QEMU_MAX_VCPUS_WITHOUT_EIM);
             return -1;
         }
-        if (!def->iommu || def->iommu->eim != VIR_TRISTATE_SWITCH_ON) {
+        if (!def->iommu || def->niommus == 0) {
+            virReportError(VIR_ERR_CONFIG_UNSUPPORTED,
+                           _("iommu device not found. more than %1$d vCPUs require extended interrupt mode enabled on the iommu device"),
+                           QEMU_MAX_VCPUS_WITHOUT_EIM);
+            return -1;
+        } else if (def->iommu[0]->eim != VIR_TRISTATE_SWITCH_ON) {
             virReportError(VIR_ERR_CONFIG_UNSUPPORTED,
                            _("more than %1$d vCPUs require extended interrupt mode enabled on the iommu device"),
                            QEMU_MAX_VCPUS_WITHOUT_EIM);
@@ -5220,6 +5225,21 @@ qemuValidateDomainDeviceDefIOMMU(const virDomainIOMMUDef *iommu,
             iommu->info.type != VIR_DOMAIN_DEVICE_ADDRESS_TYPE_PCI) {
             virReportError(VIR_ERR_CONFIG_UNSUPPORTED,
                            _("IOMMU device: '%1$s' needs a PCI address"),
+                           virDomainIOMMUModelTypeToString(iommu->model));
+            return -1;
+        }
+        break;
+
+    case VIR_DOMAIN_IOMMU_MODEL_SMMUV3_DEV:
+        if (!qemuDomainIsARMVirt(def)) {
+            virReportError(VIR_ERR_CONFIG_UNSUPPORTED,
+                           _("IOMMU device: '%1$s' is only supported with ARM Virt machines"),
+                           virDomainIOMMUModelTypeToString(iommu->model));
+            return -1;
+        }
+        if (!virQEMUCapsGet(qemuCaps, QEMU_CAPS_MACHINE_VIRT_IOMMU)) {
+            virReportError(VIR_ERR_CONFIG_UNSUPPORTED,
+                           _("IOMMU device: '%1$s' is not supported with this QEMU binary"),
                            virDomainIOMMUModelTypeToString(iommu->model));
             return -1;
         }
