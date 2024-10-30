@@ -386,6 +386,8 @@ virDomainPCIAddressFlagsCompatible(virPCIDeviceAddress *addr,
             connectStr = "pcie-expander-bus";
         } else if (devFlags & VIR_PCI_CONNECT_TYPE_PCI_BRIDGE) {
             connectStr = "pci-bridge";
+        } else if (devFlags & VIR_PCI_CONNECT_TYPE_SMMUV3_DEV) {
+            connectStr = "arm-smmuv3-dev";
         } else {
             /* this should never happen. If it does, there is a
              * bug in the code that sets the flag bits for devices.
@@ -517,7 +519,8 @@ virDomainPCIAddressBusSetModel(virDomainPCIAddressBus *bus,
         bus->flags = (VIR_PCI_CONNECT_TYPE_PCIE_DEVICE |
                       VIR_PCI_CONNECT_TYPE_PCIE_ROOT_PORT |
                       VIR_PCI_CONNECT_TYPE_DMI_TO_PCI_BRIDGE |
-                      VIR_PCI_CONNECT_TYPE_PCIE_EXPANDER_BUS);
+                      VIR_PCI_CONNECT_TYPE_PCIE_EXPANDER_BUS |
+                      VIR_PCI_CONNECT_TYPE_SMMUV3_DEV);
         bus->minSlot = 1;
         bus->maxSlot = VIR_PCI_ADDRESS_SLOT_LAST;
         break;
@@ -561,11 +564,12 @@ virDomainPCIAddressBusSetModel(virDomainPCIAddressBus *bus,
         bus->maxSlot = VIR_PCI_ADDRESS_SLOT_LAST;
         break;
     case VIR_DOMAIN_CONTROLLER_MODEL_PCIE_EXPANDER_BUS:
-        /* 32 slots, no hotplug, only accepts pcie-root-port or
-         * dmi-to-pci-bridge
+        /* 32 slots, no hotplug, only accepts pcie-root-port,
+         * dmi-to-pci-bridge, or arm-smmuv3-dev
          */
         bus->flags = (VIR_PCI_CONNECT_TYPE_PCIE_ROOT_PORT |
-                      VIR_PCI_CONNECT_TYPE_DMI_TO_PCI_BRIDGE);
+                      VIR_PCI_CONNECT_TYPE_DMI_TO_PCI_BRIDGE |
+                      VIR_PCI_CONNECT_TYPE_SMMUV3_DEV);
         bus->minSlot = 0;
         bus->maxSlot = VIR_PCI_ADDRESS_SLOT_LAST;
         break;

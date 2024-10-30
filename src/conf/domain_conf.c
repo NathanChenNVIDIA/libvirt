@@ -1350,6 +1350,7 @@ VIR_ENUM_IMPL(virDomainIOMMUModel,
               "intel",
               "smmuv3",
               "virtio",
+              "smmuv3Dev",
 );
 
 VIR_ENUM_IMPL(virDomainVsockModel,
@@ -4113,7 +4114,8 @@ void virDomainDefFree(virDomainDef *def)
         virDomainCryptoDefFree(def->cryptos[i]);
     g_free(def->cryptos);
 
-    virDomainIOMMUDefFree(def->iommu);
+    for (i = 0; i < def->niommus; i++)
+        virDomainIOMMUDefFree(def->iommu[i]);
 
     virDomainPstoreDefFree(def->pstore);
 
@@ -4985,9 +4987,9 @@ virDomainDeviceInfoIterateFlags(virDomainDef *def,
     }
 
     device.type = VIR_DOMAIN_DEVICE_IOMMU;
-    if (def->iommu) {
-        device.data.iommu = def->iommu;
-        if ((rc = cb(def, &device, &def->iommu->info, opaque)) != 0)
+    for (i = 0; i < def->niommus; i++) {
+        device.data.iommu = def->iommu[i];
+        if ((rc = cb(def, &device, &def->iommu[i]->info, opaque)) != 0)
             return rc;
     }
 
@@ -16370,6 +16372,110 @@ virDomainInputDefFind(const virDomainDef *def,
 
 
 bool
+virDomainIOMMUDefEquals(const virDomainIOMMUDef *a,
+                        const virDomainIOMMUDef *b)
+{
+    if (a->model != b->model ||
+        a->intremap != b->intremap ||
+        a->caching_mode != b->caching_mode ||
+        a->eim != b->eim ||
+        a->iotlb != b->iotlb ||
+        a->aw_bits != b->aw_bits ||
+        a->dma_translation != b->dma_translation)
+        return false;
+
+    switch (a->info.type) {
+    case VIR_DOMAIN_DEVICE_ADDRESS_TYPE_PCI:
+        if (a->info.addr.pci.domain != b->info.addr.pci.domain ||
+            a->info.addr.pci.bus != b->info.addr.pci.bus ||
+            a->info.addr.pci.slot != b->info.addr.pci.slot ||
+            a->info.addr.pci.function != b->info.addr.pci.function) {
+            return false;
+        }
+        break;
+
+    case VIR_DOMAIN_DEVICE_ADDRESS_TYPE_DRIVE:
+        if (a->info.addr.drive.controller != b->info.addr.drive.controller ||
+            a->info.addr.drive.bus != b->info.addr.drive.bus ||
+            a->info.addr.drive.unit != b->info.addr.drive.unit) {
+            return false;
+        }
+        break;
+
+    case VIR_DOMAIN_DEVICE_ADDRESS_TYPE_VIRTIO_SERIAL:
+        if (a->info.addr.vioserial.controller != b->info.addr.vioserial.controller ||
+            a->info.addr.vioserial.bus != b->info.addr.vioserial.bus ||
+            a->info.addr.vioserial.port != b->info.addr.vioserial.port) {
+            return false;
+        }
+        break;
+
+    case VIR_DOMAIN_DEVICE_ADDRESS_TYPE_CCID:
+        if (a->info.addr.ccid.controller != b->info.addr.ccid.controller ||
+            a->info.addr.ccid.slot != b->info.addr.ccid.slot) {
+            return false;
+        }
+        break;
+
+    case VIR_DOMAIN_DEVICE_ADDRESS_TYPE_ISA:
+        if (a->info.addr.isa.iobase != b->info.addr.isa.iobase ||
+            a->info.addr.isa.irq != b->info.addr.isa.irq) {
+            return false;
+        }
+        break;
+
+    case VIR_DOMAIN_DEVICE_ADDRESS_TYPE_DIMM:
+        if (a->info.addr.dimm.slot != b->info.addr.dimm.slot) {
+            return false;
+        }
+
+        if (a->info.addr.dimm.base != b->info.addr.dimm.base) {
+            return false;
+        }
+        break;
+
+    case VIR_DOMAIN_DEVICE_ADDRESS_TYPE_CCW:
+        if (a->info.addr.ccw.cssid != b->info.addr.ccw.cssid ||
+            a->info.addr.ccw.ssid != b->info.addr.ccw.ssid ||
+            a->info.addr.ccw.devno != b->info.addr.ccw.devno) {
+            return false;
+        }
+        break;
+
+    case VIR_DOMAIN_DEVICE_ADDRESS_TYPE_USB:
+    case VIR_DOMAIN_DEVICE_ADDRESS_TYPE_SPAPRVIO:
+    case VIR_DOMAIN_DEVICE_ADDRESS_TYPE_VIRTIO_S390:
+    case VIR_DOMAIN_DEVICE_ADDRESS_TYPE_VIRTIO_MMIO:
+    case VIR_DOMAIN_DEVICE_ADDRESS_TYPE_NONE:
+    case VIR_DOMAIN_DEVICE_ADDRESS_TYPE_UNASSIGNED:
+    case VIR_DOMAIN_DEVICE_ADDRESS_TYPE_LAST:
+        break;
+    }
+
+    if (a->info.acpiIndex != b->info.acpiIndex) {
+        return false;
+    }
+
+    return true;
+}
+
+
+ssize_t
+virDomainIOMMUDefFind(const virDomainDef *def,
+                      const virDomainIOMMUDef *iommu)
+{
+    size_t i;
+
+    for (i = 0; i < def->niommus; i++) {
+        if (virDomainIOMMUDefEquals(iommu, def->iommu[i]))
+            return i;
+    }
+
+    return -1;
+}
+
+
+bool
 virDomainVsockDefEquals(const virDomainVsockDef *a,
                         const virDomainVsockDef *b)
 {
@@ -19375,6 +19481,7 @@ virDomainDefControllersParse(virDomainDef *def,
     return 0;
 }
 
+
 static virDomainDef *
 virDomainDefParseXML(xmlXPathContextPtr ctxt,
                      virDomainXMLOption *xmlopt,
@@ -20021,19 +20128,28 @@ virDomainDefParseXML(xmlXPathContextPtr ctxt,
     }
     VIR_FREE(nodes);
 
+    /* analysis of iommu devices */
     if ((n = virXPathNodeSet("./devices/iommu", ctxt, &nodes)) < 0)
         return NULL;
 
-    if (n > 1) {
+    if (n > 1 && !virXPathBoolean("./devices/iommu/@model = 'smmuv3Dev'", ctxt)) {
         virReportError(VIR_ERR_XML_ERROR, "%s",
-                       _("only a single IOMMU device is supported"));
+                       _("multiple IOMMU devices are only supported with model smmuv3Dev"));
         return NULL;
     }
 
-    if (n > 0) {
-        if (!(def->iommu = virDomainIOMMUDefParseXML(xmlopt, nodes[0],
-                                                     ctxt, flags)))
+    if (n > 0)
+        def->iommu = g_new0(virDomainIOMMUDef *, n);
+
+    for (i = 0; i < n; i++) {
+        virDomainIOMMUDef *iommu;
+
+        iommu = virDomainIOMMUDefParseXML(xmlopt, nodes[i], ctxt, flags);
+
+        if (!iommu)
             return NULL;
+
+        def->iommu[def->niommus++] = iommu;
     }
     VIR_FREE(nodes);
 
@@ -22455,15 +22571,17 @@ virDomainDefCheckABIStabilityFlags(virDomainDef *src,
             goto error;
     }
 
-    if (!!src->iommu != !!dst->iommu) {
-        virReportError(VIR_ERR_CONFIG_UNSUPPORTED, "%s",
-                       _("Target domain IOMMU device count does not match source"));
+    if (src->niommus != dst->niommus) {
+        virReportError(VIR_ERR_CONFIG_UNSUPPORTED,
+                       _("Target domain IOMMU device count %1$zu does not match source %2$zu"),
+                       dst->niommus, src->niommus);
         goto error;
     }
 
-    if (src->iommu &&
-        !virDomainIOMMUDefCheckABIStability(src->iommu, dst->iommu))
-        goto error;
+    for (i = 0; i < src->niommus; i++) {
+        if (!virDomainIOMMUDefCheckABIStability(src->iommu[i], dst->iommu[i]))
+            goto error;
+    }
 
     if (!!src->vsock != !!dst->vsock) {
         virReportError(VIR_ERR_CONFIG_UNSUPPORTED, "%s",
@@ -29222,8 +29340,9 @@ virDomainDefFormatInternalSetRootName(virDomainDef *def,
     for (n = 0; n < def->ncryptos; n++) {
         virDomainCryptoDefFormat(buf, def->cryptos[n], flags);
     }
-    if (def->iommu)
-        virDomainIOMMUDefFormat(buf, def->iommu);
+
+    for (n = 0; n < def->niommus; n++)
+        virDomainIOMMUDefFormat(buf, def->iommu[n]);
 
     if (def->vsock)
         virDomainVsockDefFormat(buf, def->vsock);

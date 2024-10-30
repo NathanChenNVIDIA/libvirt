@@ -1838,21 +1838,32 @@ virDomainDefCputuneValidate(const virDomainDef *def)
 static int
 virDomainDefIOMMUValidate(const virDomainDef *def)
 {
+    size_t i;
+
     if (!def->iommu)
-        return 0;
+         return 0;
 
-    if (def->iommu->intremap == VIR_TRISTATE_SWITCH_ON &&
-        def->features[VIR_DOMAIN_FEATURE_IOAPIC] != VIR_DOMAIN_IOAPIC_QEMU) {
-        virReportError(VIR_ERR_CONFIG_UNSUPPORTED, "%s",
-                       _("IOMMU interrupt remapping requires split I/O APIC (ioapic driver='qemu')"));
-        return -1;
-    }
+    for (i = 0; i < def->niommus; i++) {
+        virDomainIOMMUDef *iommu = def->iommu[i];
 
-    if (def->iommu->eim == VIR_TRISTATE_SWITCH_ON &&
-        def->iommu->intremap != VIR_TRISTATE_SWITCH_ON) {
-        virReportError(VIR_ERR_CONFIG_UNSUPPORTED, "%s",
-                       _("IOMMU eim requires interrupt remapping to be enabled"));
-        return -1;
+        if (def->niommus > 1 && iommu->model != VIR_DOMAIN_IOMMU_MODEL_SMMUV3_DEV) {
+            virReportError(VIR_ERR_XML_ERROR, "%s",
+                           _("IOMMU model smmuv3Dev must be specified for multiple IOMMU definitions"));
+        }
+
+        if (iommu->intremap == VIR_TRISTATE_SWITCH_ON &&
+            def->features[VIR_DOMAIN_FEATURE_IOAPIC] != VIR_DOMAIN_IOAPIC_QEMU) {
+            virReportError(VIR_ERR_CONFIG_UNSUPPORTED, "%s",
+                           _("IOMMU interrupt remapping requires split I/O APIC (ioapic driver='qemu')"));
+            return -1;
+        }
+
+        if (iommu->eim == VIR_TRISTATE_SWITCH_ON &&
+            iommu->intremap != VIR_TRISTATE_SWITCH_ON) {
+            virReportError(VIR_ERR_CONFIG_UNSUPPORTED, "%s",
+                           _("IOMMU eim requires interrupt remapping to be enabled"));
+            return -1;
+        }
     }
 
     return 0;
@@ -3066,6 +3077,7 @@ virDomainIOMMUDefValidate(const virDomainIOMMUDef *iommu)
 {
     switch (iommu->model) {
     case VIR_DOMAIN_IOMMU_MODEL_SMMUV3:
+    case VIR_DOMAIN_IOMMU_MODEL_SMMUV3_DEV:
     case VIR_DOMAIN_IOMMU_MODEL_VIRTIO:
         if (iommu->intremap != VIR_TRISTATE_SWITCH_ABSENT ||
             iommu->caching_mode != VIR_TRISTATE_SWITCH_ABSENT ||
@@ -3094,6 +3106,8 @@ virDomainIOMMUDefValidate(const virDomainIOMMUDef *iommu)
                            virDomainIOMMUModelTypeToString(iommu->model));
             return -1;
         }
+        break;
+    case VIR_DOMAIN_IOMMU_MODEL_SMMUV3_DEV:
         break;
 
     case VIR_DOMAIN_IOMMU_MODEL_VIRTIO:
