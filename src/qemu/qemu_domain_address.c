@@ -943,6 +943,7 @@ qemuDomainDeviceCalculatePCIConnectFlags(virDomainDeviceDef *dev,
 
             case VIR_DOMAIN_IOMMU_MODEL_INTEL:
             case VIR_DOMAIN_IOMMU_MODEL_SMMUV3:
+            case VIR_DOMAIN_IOMMU_MODEL_NESTED_SMMUV3:
             case VIR_DOMAIN_IOMMU_MODEL_LAST:
                 /* These are not PCI devices */
                 return 0;
@@ -2367,6 +2368,7 @@ qemuDomainAssignDevicePCISlots(virDomainDef *def,
 
         case VIR_DOMAIN_IOMMU_MODEL_INTEL:
         case VIR_DOMAIN_IOMMU_MODEL_SMMUV3:
+        case VIR_DOMAIN_IOMMU_MODEL_NESTED_SMMUV3:
         case VIR_DOMAIN_IOMMU_MODEL_LAST:
             /* These are not PCI devices */
             break;
