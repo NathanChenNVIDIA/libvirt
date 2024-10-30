@@ -6142,6 +6142,7 @@
           <value>intel</value>
           <value>smmuv3</value>
           <value>virtio</value>
+          <value>nestedSmmuv3</value>
         </choice>
       </attribute>
       <interleave>
