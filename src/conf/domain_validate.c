@@ -3001,6 +3001,7 @@ virDomainIOMMUDefValidate(const virDomainIOMMUDef *iommu)
 {
     switch (iommu->model) {
     case VIR_DOMAIN_IOMMU_MODEL_SMMUV3:
+    case VIR_DOMAIN_IOMMU_MODEL_NESTED_SMMUV3:
     case VIR_DOMAIN_IOMMU_MODEL_VIRTIO:
         if (iommu->intremap != VIR_TRISTATE_SWITCH_ABSENT ||
             iommu->caching_mode != VIR_TRISTATE_SWITCH_ABSENT ||
@@ -3022,6 +3023,7 @@ virDomainIOMMUDefValidate(const virDomainIOMMUDef *iommu)
 
     switch (iommu->model) {
     case VIR_DOMAIN_IOMMU_MODEL_SMMUV3:
+    case VIR_DOMAIN_IOMMU_MODEL_NESTED_SMMUV3:
     case VIR_DOMAIN_IOMMU_MODEL_INTEL:
         if (iommu->info.type != VIR_DOMAIN_DEVICE_ADDRESS_TYPE_NONE) {
             virReportError(VIR_ERR_XML_ERROR,
