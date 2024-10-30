@@ -6090,6 +6090,9 @@ qemuBuildIOMMUCommandLine(virCommand *cmd,
         /* There is no -device for SMMUv3, so nothing to be done here */
         return 0;
 
+    case VIR_DOMAIN_IOMMU_MODEL_NESTED_SMMUV3:
+        return 0;
+
     case VIR_DOMAIN_IOMMU_MODEL_LAST:
     default:
         virReportEnumRangeError(virDomainIOMMUModel, iommu->model);
@@ -6923,7 +6926,8 @@ qemuBuildMachineCommandLine(virCommand *cmd,
         case VIR_DOMAIN_IOMMU_MODEL_VIRTIO:
             /* These IOMMUs are formatted in qemuBuildIOMMUCommandLine */
             break;
-
+        case VIR_DOMAIN_IOMMU_MODEL_NESTED_SMMUV3:
+            break;
         case VIR_DOMAIN_IOMMU_MODEL_LAST:
         default:
             virReportEnumRangeError(virDomainIOMMUModel, def->iommu->model);

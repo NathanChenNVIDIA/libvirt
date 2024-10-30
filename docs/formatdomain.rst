@@ -8750,8 +8750,9 @@ Example:
    ...
 
 ``model``
-   Supported values are ``intel`` (for Q35 guests) ``smmuv3``
-   (:since:`since 5.5.0`, for ARM virt guests), and ``virtio``
+   Supported values are ``intel`` (for Q35 guests), ``smmuv3``
+   (:since:`since 5.5.0`, for ARM virt guests), ``nestedSmmuv3``
+   (for ARM virt guests), and ``virtio``
    (:since:`since 8.3.0`, for Q35 and ARM virt guests).
 
 ``driver``
