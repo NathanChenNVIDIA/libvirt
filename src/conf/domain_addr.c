@@ -386,6 +386,8 @@ virDomainPCIAddressFlagsCompatible(virPCIDeviceAddress *addr,
             connectStr = "pcie-expander-bus";
         } else if (devFlags & VIR_PCI_CONNECT_TYPE_PCI_BRIDGE) {
             connectStr = "pci-bridge";
+        } else if (devFlags & VIR_PCI_CONNECT_TYPE_NESTED_SMMUV3) {
+            connectStr = "nestedsmmuv3";
         } else {
             /* this should never happen. If it does, there is a
              * bug in the code that sets the flag bits for devices.
@@ -565,7 +567,8 @@ virDomainPCIAddressBusSetModel(virDomainPCIAddressBus *bus,
          * dmi-to-pci-bridge
          */
         bus->flags = (VIR_PCI_CONNECT_TYPE_PCIE_ROOT_PORT |
-                      VIR_PCI_CONNECT_TYPE_DMI_TO_PCI_BRIDGE);
+                      VIR_PCI_CONNECT_TYPE_DMI_TO_PCI_BRIDGE |
+                      VIR_PCI_CONNECT_TYPE_NESTED_SMMUV3);
         bus->minSlot = 0;
         bus->maxSlot = VIR_PCI_ADDRESS_SLOT_LAST;
         break;
@@ -690,6 +693,8 @@ virDomainPCIAddressSetGrow(virDomainPCIAddressSet *addrs,
     } else if (flags & (VIR_PCI_CONNECT_TYPE_PCIE_DEVICE |
                         VIR_PCI_CONNECT_TYPE_PCIE_SWITCH_UPSTREAM_PORT)) {
         model = VIR_DOMAIN_CONTROLLER_MODEL_PCIE_ROOT_PORT;
+    } else if (flags & VIR_PCI_CONNECT_TYPE_NESTED_SMMUV3) {
+        model = VIR_DOMAIN_CONTROLLER_MODEL_PCIE_EXPANDER_BUS;
     } else {
         /* The types of devices that we can't auto-add a controller for:
          *
@@ -1030,6 +1035,11 @@ virDomainPCIAddressFindUnusedFunctionOnBus(virDomainPCIAddressBus *bus,
                 break;
             }
 
+            if (flags == VIR_PCI_CONNECT_TYPE_NESTED_SMMUV3) {
+                *found = false;
+                break;
+            }
+
             if (flags & VIR_PCI_CONNECT_AGGREGATE_SLOT &&
                 bus->slot[searchAddr->slot].aggregate) {
                 /* slot and device are okay with aggregating devices */
@@ -1086,6 +1096,20 @@ virDomainPCIAddressGetNextAddr(virDomainPCIAddressSet *addrs,
         a.function = 0;
     else
         a.function = function;
+
+    if (flags == VIR_PCI_CONNECT_TYPE_NESTED_SMMUV3) {
+        if (addrs->dryRun) {
+            virDomainPCIAddressBus *bus = &addrs->buses[addrs->nbuses - 1];
+            /* a is already set to the first new bus */
+            a.bus = addrs->nbuses;
+            a.slot = bus->minSlot;
+            if (virDomainPCIAddressSetGrow(addrs, &a, flags) < 0)
+                return -1;
+            /* this device will use the first slot of the new bus */
+            a.slot = addrs->buses[a.bus].minSlot;
+            goto success;
+        }
+    }
 
     /* When looking for a suitable bus for the device, start by being
      * very strict and ignoring all those where the isolation groups
