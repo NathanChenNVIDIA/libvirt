@@ -45,6 +45,7 @@
       <ref name="panic"/>
       <ref name="iommu"/>
       <ref name="vsock"/>
+      <ref name="nestedsmmuv3"/>
     </choice>
   </start>
 

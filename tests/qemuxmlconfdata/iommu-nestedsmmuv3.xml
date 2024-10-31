@@ -10,6 +10,5 @@
     <emulator>/usr/bin/qemu-system-aarch64</emulator>
     <controller type='usb' model='none'/>
     <memballoon model='none'/>
-    <iommu model='nestedsmmuv3'/>
   </devices>
 </domain>
