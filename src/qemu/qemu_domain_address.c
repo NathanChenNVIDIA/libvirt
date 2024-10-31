@@ -1627,6 +1627,19 @@ qemuDomainPCIAddressSetCreate(virDomainDef *def,
 
     addrs->dryRun = dryRun;
 
+    /* PXB indices must come before pcie-root-port indices in qemu,
+     * so add PXB buses to addrs before the pcie-root-ports. */
+
+    if (addrs->dryRun) {
+        for (i = 0; i < def->nnestedsmmus; i++) {
+            if (!virDeviceInfoPCIAddressIsWanted(def->nestedsmmus[i]->info))
+                continue;
+            if (qemuDomainPCIAddressReserveNextAddr(addrs,
+                                                    def->nestedsmmus[i]->info) < 0)
+                return NULL;
+        }
+    }
+
     /* pSeries domains support multiple pci-root controllers */
     if (qemuDomainIsPSeries(def))
         addrs->areMultipleRootsSupported = true;
@@ -2030,6 +2043,109 @@ qemuDomainValidateDevicePCISlotsChipsets(virDomainDef *def,
 }
 
 
+static char*
+retrieveSysfsDevPath(virPCIDeviceAddress* addr, const char* path)
+{
+    return g_strdup_printf("/sys/bus/pci/devices/%04x:%02x:%02x.%01x%s",
+                addr->domain,
+                addr->bus,
+                addr->slot,
+                addr->function,
+                path ? path : "");
+}
+
+
+static char *
+nestedSmmuVfioHostdevFound(virDomainHostdevDef *hostdev, bool dryRun)
+{
+    char* devPath = NULL;
+    char* devSmmuPath = NULL;
+    char* devVFIOPath = NULL;
+    g_autoptr(DIR) dir = NULL;
+    g_autoptr(DIR) smmuDir = NULL;
+    g_autoptr(DIR) VFIODir = NULL;
+    char* dir_iommu = NULL;
+    char* smmu_node = NULL;
+    devPath = retrieveSysfsDevPath(&hostdev->source.subsys.u.pci.addr, "");
+    if (virDirOpenIfExists(&dir, devPath) < 1)
+        return NULL;
+    devSmmuPath = retrieveSysfsDevPath(&hostdev->source.subsys.u.pci.addr, "/iommu");
+    if (virDirOpenIfExists(&smmuDir, devSmmuPath) < 1)
+        return NULL;
+    devVFIOPath = retrieveSysfsDevPath(&hostdev->source.subsys.u.pci.addr, "/vfio-dev");
+    if (hostdev->source.subsys.type == VIR_DOMAIN_HOSTDEV_SUBSYS_TYPE_PCI &&
+        (hostdev->info->addr.pci.bus != 0 || dryRun)) {
+        // We only want to route vfio hostdevs
+        if (hostdev->managed ||
+            (virDirOpenIfExists(&VFIODir, devVFIOPath) == 1)) {
+            // Get the hostdev's associated SMMU node name
+            dir_iommu = realpath(devSmmuPath, NULL);
+            if (!dir_iommu)
+                return NULL;
+            smmu_node = g_path_get_basename(dir_iommu);
+            if (!smmu_node)
+                return NULL;
+        }
+    }
+    return smmu_node;
+}
+
+
+static virDomainControllerDef *
+qemuDomainGetUpstreamCont(virDomainDef *def,
+                          virDomainDeviceInfo *downstreamInfo,
+                          int model)
+{
+    size_t i;
+    for (i = 0; i < def->ncontrollers; i++) {
+        if (def->controllers[i]->idx == downstreamInfo->addr.pci.bus &&
+            def->controllers[i]->model == model)
+            return def->controllers[i];
+    }
+    return NULL;
+}
+
+
+static int
+qemuDomainAssignNestedSmmuv3HostdevSlots(virDomainDef *def,
+                                       virDomainPCIAddressSet *addrs)
+{
+    size_t i, j;
+    char* smmu_node = NULL;
+    virDomainControllerDef *rootPort;
+    virDomainPCIAddressSet *set = NULL;
+    if (def->iommu != NULL && def->iommu->model == VIR_DOMAIN_IOMMU_MODEL_NESTED_SMMUV3 &&
+        def->nnestedsmmus > 0) {
+        for (i = 0; i < def->nhostdevs; i++) {
+            if (!(smmu_node = nestedSmmuVfioHostdevFound(def->hostdevs[i], addrs->dryRun)))
+                continue;
+            /* Find a hostdev and nested SMMU pair */
+            for (j = 0; j < def->nnestedsmmus; j++) {
+                unsigned int nestedSmmuBus = def->nestedsmmus[j]->info->addr.pci.bus;
+                virDomainControllerDef *pxb;
+                if (!STREQLEN(def->nestedsmmus[j]->name, smmu_node, strlen(smmu_node)))
+                    continue;
+                /* Get the hostdev's pcie-root-port controller */
+                rootPort = qemuDomainGetUpstreamCont(def, def->hostdevs[i]->info,
+                                                     VIR_DOMAIN_CONTROLLER_MODEL_PCIE_ROOT_PORT);
+                /* Skip if already assigned */
+                pxb = qemuDomainGetUpstreamCont(def, &rootPort->info,
+                                                VIR_DOMAIN_CONTROLLER_MODEL_PCIE_EXPANDER_BUS);
+                if (pxb)
+                    break;
+                /* Assign the controller to the next available slot/func on
+                 * the corresponding PXB */
+                set = virDomainPCIAddressSetAlloc(nestedSmmuBus + 1,
+                                                  VIR_PCI_ADDRESS_EXTENSION_NONE);
+                set->buses[nestedSmmuBus] = addrs->buses[nestedSmmuBus];
+                qemuDomainPCIAddressReserveNextAddr(set, &rootPort->info);
+                break;
+            }
+        }
+    }
+    return 0;
+}
+
 /*
  * This assigns static PCI slots to all configured devices.
  * The ordering here is chosen to match the ordering used
@@ -2262,6 +2378,18 @@ qemuDomainAssignDevicePCISlots(virDomainDef *def,
             return -1;
     }
 
+    /* Nested SMMUs */
+    if (!addrs->dryRun) {
+        for (i = 0; i < def->nnestedsmmus; i++) {
+            if (!virDeviceInfoPCIAddressIsWanted(def->nestedsmmus[i]->info))
+                continue;
+
+            if (qemuDomainPCIAddressReserveNextAddr(addrs,
+                                                    def->nestedsmmus[i]->info) < 0)
+                return -1;
+        }
+    }
+
     /* Host PCI devices */
     for (i = 0; i < def->nhostdevs; i++) {
         virDomainHostdevSubsys *subsys = &def->hostdevs[i]->source.subsys;
@@ -2283,6 +2411,12 @@ qemuDomainAssignDevicePCISlots(virDomainDef *def,
 
         if (qemuDomainPCIAddressReserveNextAddr(addrs,
                                                 def->hostdevs[i]->info) < 0)
+            return -1;
+    }
+
+    // Route hostdevs to nested SMMUs
+    if (!addrs->dryRun) {
+        if (qemuDomainAssignNestedSmmuv3HostdevSlots(def, addrs) < 0)
             return -1;
     }
 
