@@ -341,6 +341,7 @@ VIR_ENUM_IMPL(virDomainDevice,
               "audio",
               "crypto",
               "pstore",
+              "nestedSmmuv3",
 );
 
 VIR_ENUM_IMPL(virDomainDiskDevice,
@@ -3449,6 +3450,19 @@ virDomainHostdevDefNew(void)
 }
 
 
+virDomainNestedSmmuv3Def *
+virDomainNestedSmmuv3DefNew(void)
+{
+    virDomainNestedSmmuv3Def *def;
+
+    def = g_new0(virDomainNestedSmmuv3Def, 1);
+
+    def->info = g_new0(virDomainDeviceInfo, 1);
+
+    return def;
+}
+
+
 static virDomainTPMDef *
 virDomainTPMDefNew(virDomainXMLOption *xmlopt)
 {
@@ -3507,6 +3521,16 @@ void virDomainHostdevDefFree(virDomainHostdevDef *def)
      */
     if (!def->parentnet)
         g_free(def);
+}
+
+void virDomainNestedSmmuv3DefFree(virDomainNestedSmmuv3Def *def)
+{
+    if (!def)
+        return;
+
+    g_free(def->name);
+
+    virDomainDeviceInfoFree(def->info);
 }
 
 void virDomainHubDefFree(virDomainHubDef *def)
@@ -3670,6 +3694,9 @@ void virDomainDeviceDefFree(virDomainDeviceDef *def)
         break;
     case VIR_DOMAIN_DEVICE_PSTORE:
         virDomainPstoreDefFree(def->data.pstore);
+        break;
+    case VIR_DOMAIN_DEVICE_NESTED_SMMUV3:
+        virDomainNestedSmmuv3DefFree(def->data.nestedsmmuv3);
         break;
     case VIR_DOMAIN_DEVICE_LAST:
     case VIR_DOMAIN_DEVICE_NONE:
@@ -4597,6 +4624,8 @@ virDomainDeviceGetInfo(const virDomainDeviceDef *device)
         return &device->data.crypto->info;
     case VIR_DOMAIN_DEVICE_PSTORE:
         return &device->data.pstore->info;
+    case VIR_DOMAIN_DEVICE_NESTED_SMMUV3:
+        return device->data.nestedsmmuv3->info;
 
     /* The following devices do not contain virDomainDeviceInfo */
     case VIR_DOMAIN_DEVICE_LEASE:
@@ -4704,6 +4733,9 @@ virDomainDeviceSetData(virDomainDeviceDef *device,
         break;
     case VIR_DOMAIN_DEVICE_PSTORE:
         device->data.pstore = devicedata;
+        break;
+    case VIR_DOMAIN_DEVICE_NESTED_SMMUV3:
+        device->data.nestedsmmuv3 = devicedata;
         break;
     case VIR_DOMAIN_DEVICE_NONE:
     case VIR_DOMAIN_DEVICE_LAST:
@@ -4930,6 +4962,13 @@ virDomainDeviceInfoIterateFlags(virDomainDef *def,
             return rc;
     }
 
+    device.type = VIR_DOMAIN_DEVICE_NESTED_SMMUV3;
+    for (i = 0; i < def->nnestedsmmus; i++) {
+        device.data.nestedsmmuv3 = def->nestedsmmus[i];
+        if ((rc = cb(def, &device, def->nestedsmmus[i]->info, opaque)) != 0)
+            return rc;
+    }
+
     /* If the flag below is set, make sure @cb can handle @info being NULL */
     if (iteratorFlags & DOMAIN_DEVICE_ITERATE_MISSING_INFO) {
         device.type = VIR_DOMAIN_DEVICE_GRAPHICS;
@@ -4990,6 +5029,7 @@ virDomainDeviceInfoIterateFlags(virDomainDef *def,
     case VIR_DOMAIN_DEVICE_AUDIO:
     case VIR_DOMAIN_DEVICE_CRYPTO:
     case VIR_DOMAIN_DEVICE_PSTORE:
+    case VIR_DOMAIN_DEVICE_NESTED_SMMUV3:
         break;
     }
 #endif
@@ -13365,6 +13405,40 @@ virDomainHostdevDefParseXML(virDomainXMLOption *xmlopt,
 }
 
 
+static virDomainNestedSmmuv3Def *
+virDomainNestedSmmuv3DefParseXML(virDomainXMLOption *xmlopt,
+                            xmlNodePtr node,
+                            xmlXPathContextPtr ctxt,
+                            unsigned int flags)
+{
+    virDomainNestedSmmuv3Def *def;
+    size_t nameLength;
+    VIR_XPATH_NODE_AUTORESTORE(ctxt)
+
+    ctxt->node = node;
+
+    if (!(def = virDomainNestedSmmuv3DefNew()))
+        goto error;
+
+    nameLength = strlen(virXPathString("string(./name)", ctxt)) + 1;
+    VIR_REALLOC_N(def->name, nameLength);
+    if (!def->name)
+        goto error;
+    virStrcpy(def->name, virXPathString("string(./name)", ctxt), nameLength);
+
+    if (def->info->type == VIR_DOMAIN_DEVICE_ADDRESS_TYPE_NONE) {
+        if (virDomainDeviceInfoParseXML(xmlopt, node, ctxt, def->info,
+                                        flags) < 0)
+            goto error;
+    }
+    return def;
+
+ error:
+    virDomainNestedSmmuv3DefFree(def);
+    return NULL;
+}
+
+
 static virDomainRedirdevDef *
 virDomainRedirdevDefParseXML(virDomainXMLOption *xmlopt,
                              xmlNodePtr node,
@@ -14362,6 +14436,12 @@ virDomainDeviceDefParse(const char *xmlStr,
         break;
     case VIR_DOMAIN_DEVICE_PSTORE:
         if (!(dev->data.pstore = virDomainPstoreDefParseXML(xmlopt, node,
+                                                            ctxt, flags))) {
+            return NULL;
+        }
+        break;
+    case VIR_DOMAIN_DEVICE_NESTED_SMMUV3:
+        if (!(dev->data.nestedsmmuv3 = virDomainNestedSmmuv3DefParseXML(xmlopt, node,
                                                             ctxt, flags))) {
             return NULL;
         }
@@ -19445,6 +19525,21 @@ virDomainDefParseXML(xmlXPathContextPtr ctxt,
 
     VIR_FREE(nodes);
 
+    /* analysis of the nested SMMUs */
+    if ((n = virXPathNodeSet("./devices/nestedSmmuv3", ctxt, &nodes)) < 0)
+        return NULL;
+    if (n > 0)
+        VIR_REALLOC_N(def->nestedsmmus, def->nnestedsmmus + n);
+    for (i = 0; i < n; i++) {
+        virDomainNestedSmmuv3Def *nestedsmmuv3;
+        nestedsmmuv3 = virDomainNestedSmmuv3DefParseXML(xmlopt, nodes[i], ctxt,
+                                              flags);
+        if (!nestedsmmuv3)
+            return NULL;
+        def->nestedsmmus[def->nnestedsmmus++] = nestedsmmuv3;
+    }
+    VIR_FREE(nodes);
+
     /* analysis of the host devices */
     if ((n = virXPathNodeSet("./devices/hostdev", ctxt, &nodes)) < 0)
         return NULL;
@@ -20657,6 +20752,17 @@ virDomainHostdevDefCheckABIStability(virDomainHostdevDef *src,
         return false;
     }
 
+    if (!virDomainDeviceInfoCheckABIStability(src->info, dst->info))
+        return false;
+
+    return true;
+}
+
+
+static bool
+virDomainNestedSmmuv3DefCheckABIStability(virDomainNestedSmmuv3Def *src,
+                                     virDomainNestedSmmuv3Def *dst)
+{
     if (!virDomainDeviceInfoCheckABIStability(src->info, dst->info))
         return false;
 
@@ -22001,6 +22107,18 @@ virDomainDefCheckABIStabilityFlags(virDomainDef *src,
             goto error;
     }
 
+    if (src->nnestedsmmus != dst->nnestedsmmus) {
+        virReportError(VIR_ERR_CONFIG_UNSUPPORTED,
+                       _("Target domain nested SMMUs count %1$zu does not match source %2$zu"),
+                       dst->nnestedsmmus, src->nnestedsmmus);
+        goto error;
+    }
+
+    for (i = 0; i < src->nnestedsmmus; i++)
+        if (!virDomainNestedSmmuv3DefCheckABIStability(src->nestedsmmus[i],
+                                                  dst->nestedsmmus[i]))
+            goto error;
+
     if ((!src->redirfilter && dst->redirfilter) ||
         (src->redirfilter && !dst->redirfilter)) {
         virReportError(VIR_ERR_CONFIG_UNSUPPORTED,
@@ -22171,6 +22289,7 @@ virDomainDefCheckABIStabilityFlags(virDomainDef *src,
     case VIR_DOMAIN_DEVICE_AUDIO:
     case VIR_DOMAIN_DEVICE_CRYPTO:
     case VIR_DOMAIN_DEVICE_PSTORE:
+    case VIR_DOMAIN_DEVICE_NESTED_SMMUV3:
         break;
     }
 #endif
@@ -22366,6 +22485,36 @@ virDomainDefAddImplicitVideo(virDomainDef *def, virDomainXMLOption *xmlopt)
     return 0;
 }
 
+static int
+virDomainDefAddImplicitNestedSmmuv3(virDomainDef *def)
+{
+    // Get the number of host-level SMMUv3 instances
+    g_autoptr(DIR) dir = NULL;
+    struct dirent *dent;
+    int num = 0;
+
+    virDomainNestedSmmuv3Def* nestedsmmuv3 = NULL;
+
+    if (virDirOpen(&dir, "/sys/class/iommu") < 0)
+        return -1;
+
+    while (virDirRead(dir, &dent, "/sys/class/iommu") > 0) {
+        if (!(nestedsmmuv3 = virDomainNestedSmmuv3DefNew()))
+            return -1;
+        if (STRPREFIX(dent->d_name, "smmu3.0x")) {
+            VIR_REALLOC_N(nestedsmmuv3->name, strlen(dent->d_name) + 1);
+            virStrcpy(nestedsmmuv3->name, dent->d_name, strlen(dent->d_name) + 1);
+            VIR_REALLOC_N(def->nestedsmmus, def->nnestedsmmus + 1);
+            def->nestedsmmus[def->nnestedsmmus++] = nestedsmmuv3;
+            num++;
+        }
+    }
+    if (num == 0)
+        return -1;
+
+    return 0;
+}
+
 int
 virDomainDefAddImplicitDevices(virDomainDef *def, virDomainXMLOption *xmlopt)
 {
@@ -22378,6 +22527,13 @@ virDomainDefAddImplicitDevices(virDomainDef *def, virDomainXMLOption *xmlopt)
 
     if (virDomainDefAddImplicitVideo(def, xmlopt) < 0)
         return -1;
+
+    if (def->iommu != NULL &&
+        def->iommu->model == VIR_DOMAIN_IOMMU_MODEL_NESTED_SMMUV3 &&
+        def->nnestedsmmus < 1) {
+        if (virDomainDefAddImplicitNestedSmmuv3(def) < 0)
+            return -1;
+    }
 
     return 0;
 }
@@ -26815,6 +26971,24 @@ virDomainHostdevDefFormat(virBuffer *buf,
 }
 
 static int
+virDomainNestedSmmuv3DefFormat(virBuffer *buf,
+                          virDomainNestedSmmuv3Def *def,
+                          unsigned int flags)
+{
+    virBufferAddLit(buf, "<nestedSmmuv3>\n");
+    virBufferAdjustIndent(buf, 2);
+
+    virBufferAsprintf(buf, "<name>%s</name>\n", def->name);
+
+    virDomainDeviceInfoFormat(buf, def->info, flags);
+
+    virBufferAdjustIndent(buf, -2);
+    virBufferAddLit(buf, "</nestedSmmuv3>\n");
+
+    return 0;
+}
+
+static int
 virDomainRedirdevDefFormat(virBuffer *buf,
                            virDomainRedirdevDef *def,
                            unsigned int flags)
@@ -28672,6 +28846,12 @@ virDomainDefFormatInternalSetRootName(virDomainDef *def,
     for (n = 0; n < def->ncryptos; n++) {
         virDomainCryptoDefFormat(buf, def->cryptos[n], flags);
     }
+
+    for (n = 0; n < def->nnestedsmmus; n++) {
+        if (virDomainNestedSmmuv3DefFormat(buf, def->nestedsmmus[n], flags) < 0)
+            return -1;
+    }
+
     if (def->iommu)
         virDomainIOMMUDefFormat(buf, def->iommu);
 
@@ -28841,6 +29021,7 @@ virDomainDeviceIsUSB(virDomainDeviceDef *dev,
     case VIR_DOMAIN_DEVICE_AUDIO:
     case VIR_DOMAIN_DEVICE_CRYPTO:
     case VIR_DOMAIN_DEVICE_PSTORE:
+    case VIR_DOMAIN_DEVICE_NESTED_SMMUV3:
     break;
     }
 
