@@ -975,6 +975,7 @@ qemuBuildVirtioDevGetConfigDev(const virDomainDeviceDef *device,
         case VIR_DOMAIN_DEVICE_IOMMU:
         case VIR_DOMAIN_DEVICE_AUDIO:
         case VIR_DOMAIN_DEVICE_PSTORE:
+        case VIR_DOMAIN_DEVICE_NESTED_SMMUV3:
         case VIR_DOMAIN_DEVICE_LAST:
         default:
             break;
@@ -4554,6 +4555,35 @@ qemuBuildVideoCommandLine(virCommand *cmd,
 
 
 virJSONValue *
+qemuBuildPCINestedSmmuv3DevProps(const virDomainDef *def,
+                            virDomainNestedSmmuv3Def *nestedsmmuv3)
+{
+    g_autoptr(virJSONValue) props = NULL;
+    g_autofree char *pciaddr = NULL;
+    g_autofree char *bus = qemuBuildDeviceAddressPCIGetBus(def, nestedsmmuv3->info);
+
+    if (!bus)
+        return NULL;
+
+    if (nestedsmmuv3->info->addr.pci.function != 0)
+        pciaddr = g_strdup_printf("0x%x.0x%x", nestedsmmuv3->info->addr.pci.slot, nestedsmmuv3->info->addr.pci.function);
+    else
+        pciaddr = g_strdup_printf("0x%x", nestedsmmuv3->info->addr.pci.slot);
+
+    if (virJSONValueObjectAdd(&props,
+                              "s:driver", "arm-smmuv3-nested",
+                              "s:bus", bus,
+                              "T:multifunction", nestedsmmuv3->info->addr.pci.multi,
+                              "s:addr", pciaddr,
+                              "p:acpi-index", nestedsmmuv3->info->acpiIndex,
+                              NULL) < 0)
+        return NULL;
+
+    return g_steal_pointer(&props);
+}
+
+
+virJSONValue *
 qemuBuildPCIHostdevDevProps(const virDomainDef *def,
                             virDomainHostdevDef *dev)
 {
@@ -4961,6 +4991,33 @@ qemuBuildHostdevSCSICommandLine(virCommand *cmd,
     if (qemuBuildDeviceCommandlineFromJSON(cmd, devprops, def, qemuCaps) < 0)
         return -1;
 
+    return 0;
+}
+
+
+static int
+qemuBuildNestedSmmuv3CommandLine(virCommand *cmd,
+                                const virDomainDef *def,
+                                virQEMUCaps *qemuCaps)
+{
+    size_t i;
+
+    for (i = 0; i < def->nnestedsmmus; i++) {
+        g_autoptr(virJSONValue) devprops = NULL;
+        virDomainNestedSmmuv3Def *nestedsmmuv3 = def->nestedsmmus[i];
+
+        if (nestedsmmuv3->info->type == VIR_DOMAIN_DEVICE_ADDRESS_TYPE_UNASSIGNED)
+            continue;
+
+        if (qemuCommandAddExtDevice(cmd, nestedsmmuv3->info, def, qemuCaps) < 0)
+            return -1;
+
+        if (!(devprops = qemuBuildPCINestedSmmuv3DevProps(def, nestedsmmuv3)))
+            return -1;
+
+        if (qemuBuildDeviceCommandlineFromJSON(cmd, devprops, def, qemuCaps) < 0)
+            return -1;
+    }
     return 0;
 }
 
@@ -10527,6 +10584,9 @@ qemuBuildCommandLine(virDomainObj *vm,
         return NULL;
 
     if (qemuBuildHostdevCommandLine(cmd, def, qemuCaps) < 0)
+        return NULL;
+
+    if (qemuBuildNestedSmmuv3CommandLine(cmd, def, qemuCaps) < 0)
         return NULL;
 
     if (migrateURI)

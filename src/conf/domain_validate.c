@@ -2284,6 +2284,25 @@ virDomainHostdevDefValidate(const virDomainHostdevDef *hostdev)
 }
 
 
+static int
+virDomainNestedSmmuv3DefValidate(const virDomainNestedSmmuv3Def *nestedsmmuv3)
+{
+    if (nestedsmmuv3->info->type != VIR_DOMAIN_DEVICE_ADDRESS_TYPE_NONE &&
+        nestedsmmuv3->info->type != VIR_DOMAIN_DEVICE_ADDRESS_TYPE_PCI) {
+        virReportError(VIR_ERR_INTERNAL_ERROR, "%s",
+               _("nestedsmmuv3 must use 'pci' address type"));
+        return -1;
+    }
+
+    if (nestedsmmuv3->name[0] == '\0') {
+        virReportError(VIR_ERR_INTERNAL_ERROR, "%s",
+               _("nestedsmmuv3 must have an associated sysfs node name"));
+        return -1;
+    }
+    return 0;
+}
+
+
 /**
  * virDomainMemoryGetMappedSize:
  * @mem: memory device definition
