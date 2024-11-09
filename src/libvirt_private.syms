@@ -159,6 +159,8 @@ virDomainPCIAddressExtensionReserveNextAddr;
 virDomainPCIAddressReleaseAddr;
 virDomainPCIAddressReserveAddr;
 virDomainPCIAddressReserveNextAddr;
+virDomainPCIAddressReserveNextSwitchDownstreamPort;
+virDomainPCIAddressReserveNextSwitchUpstreamPort;
 virDomainPCIAddressSetAllMulti;
 virDomainPCIAddressSetAlloc;
 virDomainPCIAddressSetFree;

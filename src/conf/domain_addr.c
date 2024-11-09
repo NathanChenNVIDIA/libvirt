@@ -621,6 +621,74 @@ virDomainPCIAddressBusIsEmpty(virDomainPCIAddressBus *bus)
  * >0 = number of buses added
  */
 static int
+virDomainPCIAddressSetGrowUpstreamPort(virDomainPCIAddressSet *addrs,
+                           virPCIDeviceAddress *addr)
+{
+    int add;
+    size_t i;
+    int model;
+
+    add = addr->bus - addrs->nbuses + 1;
+    if (add <= 0)
+        return 0;
+
+    model = VIR_DOMAIN_CONTROLLER_MODEL_PCIE_SWITCH_UPSTREAM_PORT;
+
+    i = addrs->nbuses;
+
+    VIR_EXPAND_N(addrs->buses, addrs->nbuses, add);
+
+    for (; i < addrs->nbuses; i++) {
+        if (virDomainPCIAddressBusSetModel(&addrs->buses[i], model, true) < 0)
+            return -1;
+    }
+
+    return add;
+}
+
+
+/* Ensure addr fits in the address set, by expanding it if needed
+ *
+ * Return value:
+ * -1 = OOM
+ *  0 = no action performed
+ * >0 = number of buses added
+ */
+static int
+virDomainPCIAddressSetGrowDownstreamPort(virDomainPCIAddressSet *addrs,
+                           virPCIDeviceAddress *addr)
+{
+    int add;
+    size_t i;
+    int model;
+
+    add = addr->bus - addrs->nbuses + 1;
+    if (add <= 0)
+        return 0;
+
+    model = VIR_DOMAIN_CONTROLLER_MODEL_PCIE_SWITCH_DOWNSTREAM_PORT;
+
+    i = addrs->nbuses;
+
+    VIR_EXPAND_N(addrs->buses, addrs->nbuses, add);
+
+    for (; i < addrs->nbuses; i++) {
+        if (virDomainPCIAddressBusSetModel(&addrs->buses[i], model, true) < 0)
+            return -1;
+    }
+
+    return add;
+}
+
+
+/* Ensure addr fits in the address set, by expanding it if needed
+ *
+ * Return value:
+ * -1 = OOM
+ *  0 = no action performed
+ * >0 = number of buses added
+ */
+static int
 virDomainPCIAddressSetGrow(virDomainPCIAddressSet *addrs,
                            virPCIDeviceAddress *addr,
                            virDomainPCIConnectFlags flags)
@@ -693,6 +761,8 @@ virDomainPCIAddressSetGrow(virDomainPCIAddressSet *addrs,
     } else if (flags & (VIR_PCI_CONNECT_TYPE_PCIE_DEVICE |
                         VIR_PCI_CONNECT_TYPE_PCIE_SWITCH_UPSTREAM_PORT)) {
         model = VIR_DOMAIN_CONTROLLER_MODEL_PCIE_ROOT_PORT;
+    } else if (flags & VIR_PCI_CONNECT_TYPE_PCIE_SWITCH_DOWNSTREAM_PORT) {
+        model = VIR_DOMAIN_CONTROLLER_MODEL_PCIE_SWITCH_UPSTREAM_PORT;
     } else if (flags & VIR_PCI_CONNECT_TYPE_NESTED_SMMUV3) {
         model = VIR_DOMAIN_CONTROLLER_MODEL_PCIE_EXPANDER_BUS;
     } else {
@@ -868,6 +938,55 @@ virDomainPCIAddressReserveAddrInternal(virDomainPCIAddressSet *addrs,
     bus->slot[addr->slot].functions |= (1 << addr->function);
     VIR_DEBUG("Reserving PCI address %s (aggregate='%s')", addrStr,
               bus->slot[addr->slot].aggregate ? "true" : "false");
+
+    return 0;
+}
+
+
+static int ATTRIBUTE_NONNULL(1) ATTRIBUTE_NONNULL(2)
+virDomainPCIAddressReserveDownstreamPortAddrsInternal(virDomainPCIAddressSet *addrs,
+                                       virPCIDeviceAddress *addr,
+                                       virDomainPCIConnectFlags *flags,
+                                       unsigned int isolationGroup,
+                                       bool fromConfig,
+                                       size_t numDownstreamPorts)
+{
+    size_t i;
+    g_autofree char *addrStr = NULL;
+    virDomainPCIAddressBus *bus;
+    virErrorNumber errType = (fromConfig
+                              ? VIR_ERR_XML_ERROR : VIR_ERR_INTERNAL_ERROR);
+
+    for (i = 0; i < numDownstreamPorts; i++) {
+        if (!(addrStr = virPCIDeviceAddressAsString(&addr[i])))
+            return -1;
+
+        /* Add an extra bus if necessary */
+        if (addrs->dryRun && virDomainPCIAddressSetGrow(addrs, &addr[i], flags[i]) < 0)
+            return -1;
+        /* Check that the requested bus exists, is the correct type, and we
+         * are asking for a valid slot
+         */
+        if (!virDomainPCIAddressValidate(addrs, &addr[i], addrStr, flags[i], fromConfig))
+            return -1;
+
+        bus = &addrs->buses[addr[i].bus];
+
+        if (bus->slot[addr[i].slot].functions & (1 << addr[i].function)) {
+            virReportError(errType,
+                           _("Attempted double use of PCI Address %1$s"), addrStr);
+            return -1;
+        }
+
+        bus->isolationGroup = 0;
+        VIR_DEBUG("PCI bus %04x:%02x assigned isolation group %u because of "
+                  "user assigned address %s",
+                  addr[i].domain, addr[i].bus, isolationGroup, addrStr);
+
+        /* mark the requested function as reserved */
+        bus->slot[addr[i].slot].functions |= (1 << addr[i].function);
+        VIR_DEBUG("Reserving PCI address %s", addrStr);
+    }
 
     return 0;
 }
@@ -1078,6 +1197,88 @@ virDomainPCIAddressFindUnusedFunctionOnBus(virDomainPCIAddressBus *bus,
 
 
 static int ATTRIBUTE_NONNULL(1) ATTRIBUTE_NONNULL(2)
+virDomainPCIAddressGetNextUpstreamPortAddr(virDomainPCIAddressSet *addrs,
+                               virPCIDeviceAddress *next_addr,
+                               int function)
+{
+    virPCIDeviceAddress a = { 0 };
+    virDomainPCIAddressBus *bus = &addrs->buses[addrs->nbuses - 1];
+
+    if (addrs->nbuses == 0) {
+        virReportError(VIR_ERR_XML_ERROR, "%s", _("No PCI buses available"));
+        return -1;
+    }
+
+    /* if the caller asks for "any function", give them function 0 */
+    if (function == -1)
+        a.function = 0;
+    else
+        a.function = function;
+
+    /* a is already set to the first new bus */
+    a.bus = addrs->nbuses;
+    a.slot = bus->minSlot;
+    if (virDomainPCIAddressSetGrowUpstreamPort(addrs, &a) < 0)
+        return -1;
+    /* this device will use the first slot of the new bus */
+    a.slot = addrs->buses[a.bus].minSlot;
+
+    VIR_DEBUG("Found free PCI slot %04x:%02x:%02x",
+              a.domain, a.bus, a.slot);
+    *next_addr = a;
+
+    return 0;
+}
+
+
+static int ATTRIBUTE_NONNULL(1) ATTRIBUTE_NONNULL(2)
+virDomainPCIAddressGetNextDownstreamPortAddrs(virDomainPCIAddressSet *addrs,
+                               virPCIDeviceAddress *next_addr,
+                               int function,
+                               size_t numDownstreamPorts)
+{
+    size_t i;
+    virPCIDeviceAddress *a;
+    virPCIDeviceAddress a_init = { 0 };
+    a = g_new0(virPCIDeviceAddress, numDownstreamPorts);
+    for (i = 0; i < numDownstreamPorts; i++) {
+        a[i] = a_init;
+    }
+
+    if (addrs->nbuses == 0) {
+        virReportError(VIR_ERR_XML_ERROR, "%s", _("No PCI buses available"));
+        return -1;
+    }
+
+    /* if the caller asks for "any function", give them function 0 */
+    for (i = 0; i < numDownstreamPorts; i++) {
+        if (function == -1)
+            a[i].function = 0;
+        else
+            a[i].function = function;
+    }
+
+    for (i = 0; i < numDownstreamPorts; i++) {
+        virDomainPCIAddressBus *bus = &addrs->buses[addrs->nbuses - 1];
+        /* a is already set to the first new bus */
+        a[i].bus = addrs->nbuses;
+        a[i].slot = bus->minSlot;
+        if (virDomainPCIAddressSetGrowDownstreamPort(addrs, &a[i]) < 0)
+            return -1;
+        /* this device will use the first slot of the new bus */
+        a[i].slot = addrs->buses[a[i].bus].minSlot;
+    }
+
+    for (i = 0; i < numDownstreamPorts; i++) {
+        VIR_DEBUG("Found free PCI slot %04x:%02x:%02x",
+                  a[i].domain, a[i].bus, a[i].slot);
+        next_addr[i] = a[i];
+    }
+    return 0;
+}
+
+
+static int ATTRIBUTE_NONNULL(1) ATTRIBUTE_NONNULL(2)
 virDomainPCIAddressGetNextAddr(virDomainPCIAddressSet *addrs,
                                virPCIDeviceAddress *next_addr,
                                virDomainPCIConnectFlags flags,
@@ -1177,6 +1378,71 @@ virDomainPCIAddressGetNextAddr(virDomainPCIAddressSet *addrs,
     VIR_DEBUG("Found free PCI slot %04x:%02x:%02x",
               a.domain, a.bus, a.slot);
     *next_addr = a;
+    return 0;
+}
+
+
+int
+virDomainPCIAddressReserveNextSwitchUpstreamPort(virDomainPCIAddressSet *addrs,
+                                   virDomainDeviceInfo *dev,
+                                   int function)
+{
+    virPCIDeviceAddress addr = { 0 };
+    virDomainPCIConnectFlags flags =
+            VIR_PCI_CONNECT_TYPE_PCIE_SWITCH_DOWNSTREAM_PORT;
+
+    if (virDomainPCIAddressGetNextUpstreamPortAddr(addrs, &addr, function) < 0)
+        return -1;
+
+    if (virDomainPCIAddressReserveAddrInternal(addrs, &addr, flags,
+                                               dev->isolationGroup, false) < 0)
+        return -1;
+
+    addr.extFlags = dev->addr.pci.extFlags;
+    addr.zpci = dev->addr.pci.zpci;
+
+    return 0;
+}
+
+
+int
+virDomainPCIAddressReserveNextSwitchDownstreamPort(virDomainPCIAddressSet *addrs,
+                                   virDomainDeviceInfo *dev,
+                                   int function)
+{
+    size_t i;
+    /* TODO: Dynamically determine # of pcie-switch-downstream-ports
+     * that we can assign without starving total PCI bus number */
+    size_t numDownstreamPorts = 2;
+
+    virPCIDeviceAddress *smmuTopoAddrs;
+    virDomainPCIConnectFlags *flagsArr;
+
+    virPCIDeviceAddress smmuTopoAddrs_init = { 0 };
+
+    smmuTopoAddrs = g_new0(virPCIDeviceAddress, numDownstreamPorts);
+    flagsArr = g_new0(virDomainPCIConnectFlags, numDownstreamPorts);
+
+    /* Addresses and flags for PCIe switch downstream ports */
+    for (i = 0; i < numDownstreamPorts; i++) {
+        smmuTopoAddrs[i] = smmuTopoAddrs_init;
+        flagsArr[i] = VIR_PCI_CONNECT_TYPE_PCIE_DEVICE;
+    }
+
+    if (virDomainPCIAddressGetNextDownstreamPortAddrs(addrs, smmuTopoAddrs,
+                                                    function, numDownstreamPorts) < 0)
+        return -1;
+
+    if (virDomainPCIAddressReserveDownstreamPortAddrsInternal(addrs, smmuTopoAddrs, flagsArr,
+                                                            dev->isolationGroup, false,
+                                                            numDownstreamPorts) < 0)
+        return -1;
+
+    for (i = 0; i < numDownstreamPorts; i++) {
+        smmuTopoAddrs[i].extFlags = dev->addr.pci.extFlags;
+        smmuTopoAddrs[i].zpci = dev->addr.pci.zpci;
+    }
+
     return 0;
 }
 

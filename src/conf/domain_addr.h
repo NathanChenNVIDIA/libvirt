@@ -177,6 +177,16 @@ int virDomainPCIAddressReserveAddr(virDomainPCIAddressSet *addrs,
                                    unsigned int isolationGroup)
     ATTRIBUTE_NONNULL(1) ATTRIBUTE_NONNULL(2);
 
+int virDomainPCIAddressReserveNextSwitchUpstreamPort(virDomainPCIAddressSet *addrs,
+                                       virDomainDeviceInfo *dev,
+                                       int function)
+    ATTRIBUTE_NONNULL(1) ATTRIBUTE_NONNULL(2);
+
+int virDomainPCIAddressReserveNextSwitchDownstreamPort(virDomainPCIAddressSet *addrs,
+                                       virDomainDeviceInfo *dev,
+                                       int function)
+    ATTRIBUTE_NONNULL(1) ATTRIBUTE_NONNULL(2);
+
 int virDomainPCIAddressReserveNextAddr(virDomainPCIAddressSet *addrs,
                                        virDomainDeviceInfo *dev,
                                        virDomainPCIConnectFlags flags,
