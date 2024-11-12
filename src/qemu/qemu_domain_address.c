@@ -2107,81 +2107,169 @@ nestedSmmuVfioHostdevFound(virDomainHostdevDef *hostdev, bool dryRun)
 }
 
 
+static virDomainControllerDef *
+qemuDomainGetUpstreamCont(virDomainDef *def,
+                          virDomainDeviceInfo *downstreamInfo,
+                          int model)
+{
+    size_t i;
+    for (i = 0; i < def->ncontrollers; i++) {
+        if (def->controllers[i]->idx == downstreamInfo->addr.pci.bus &&
+            def->controllers[i]->model == model)
+            return def->controllers[i];
+    }
+    return NULL;
+}
+
+
+static virDomainControllerDef *
+qemuDomainGetEqualBusCont(virDomainDef *def,
+                  size_t idxOrBus,
+                  int model)
+{
+    size_t i;
+    for (i = 0; i < def->ncontrollers; i++) {
+        if (def->controllers[i]->info.addr.pci.bus == idxOrBus &&
+            def->controllers[i]->model == model)
+            return def->controllers[i];
+    }
+    return NULL;
+}
+
+
+static virDomainControllerDef *
+qemuDomainGetFreeCont(virDomainDef *def,
+                      int model)
+{
+    size_t i, j;
+    for (i = 0; i < def->ncontrollers; i++) {
+        bool foundFreeRootPort = true;
+        if (def->controllers[i]->model == model) {
+            for (j = 0; j < def->ncontrollers; j++) {
+                if (def->controllers[i]->info.addr.pci.bus == def->controllers[j]->idx &&
+                    def->controllers[i]->info.addr.pci.bus != 0) {
+                    foundFreeRootPort = false;
+                    break;
+                }
+            }
+        }
+        if (foundFreeRootPort)
+            return def->controllers[i];
+    }
+    return NULL;
+}
+
+
 static int
 qemuDomainAssignNestedSmmuv3HostdevSlots(virDomainDef *def,
                                        virDomainPCIAddressSet *addrs)
 {
-    size_t i, j, k, l, m;
+    size_t i, j;
+    char* smmu_node = NULL;
+    virDomainControllerDef *downstreamPort, *upstreamPort, *rootPort, *pxb, *correctPxb, *cont;
+    virDomainPCIAddressSet *set = NULL;
     if (def->iommu != NULL && def->iommu->model == VIR_DOMAIN_IOMMU_MODEL_NESTED_SMMUV3 &&
         def->nnestedsmmus > 0) {
-        char* devPath = NULL;
-        char* devSmmuPath = NULL;
-        char* devVFIOPath = NULL;
-        g_autoptr(DIR) dir = NULL;
-        g_autoptr(DIR) smmuDir = NULL;
-        g_autoptr(DIR) VFIODir = NULL;
-        char* dir_iommu = NULL;
-        char* smmu_node = NULL;
         for (i = 0; i < def->nhostdevs; i++) {
-            // Look for hostdevs that have an associated smmu directory in sysfs
-            devPath = retrieveSysfsDevPath(&def->hostdevs[i]->source.subsys.u.pci.addr, "");
-            if (virDirOpenIfExists(&dir, devPath) < 1)
+            if (!(smmu_node = nestedSmmuVfioHostdevFound(def->hostdevs[i], addrs->dryRun)))
                 continue;
-            devSmmuPath = retrieveSysfsDevPath(&def->hostdevs[i]->source.subsys.u.pci.addr, "/iommu");
-            if (virDirOpenIfExists(&smmuDir, devSmmuPath) < 1)
-                continue;
-            devVFIOPath = retrieveSysfsDevPath(&def->hostdevs[i]->source.subsys.u.pci.addr, "/vfio-dev");
-            if (def->hostdevs[i]->source.subsys.type == VIR_DOMAIN_HOSTDEV_SUBSYS_TYPE_PCI &&
-                def->hostdevs[i]->info->addr.pci.bus != 0) {
-                // We only want to route vfio hostdevs
-                if (def->hostdevs[i]->managed ||
-                    (virDirOpenIfExists(&VFIODir, devVFIOPath) == 1)) {
-                    // Get the hostdev's associated SMMU node name
-                    dir_iommu = realpath(devSmmuPath, NULL);
-                    if (!dir_iommu)
-                        return -1;
-                    smmu_node = g_path_get_basename(dir_iommu);
-                    if (!smmu_node)
-                        return -1;
-                    /* Find a hostdev and nested SMMU pair */
-                    for (j = 0; j < def->nnestedsmmus; j++) {
-                        if (!STREQLEN(def->nestedsmmus[j]->name, smmu_node, strlen(smmu_node)))
-                            continue;
-                        /* If hostdev <=> SMMU pair found, find the pcie-switch-downstream-port
-                         *  the hostdev is attached to */
-                        for (k = 0; k < def->ncontrollers; k++) {
-                            if (def->controllers[k]->idx == def->hostdevs[i]->info->addr.pci.bus) {
-                                /* Find the upstream port this downstream port is attached to */
-                                for (l = 0; l < def->ncontrollers; l++) {
-                                    if (def->controllers[l]->idx == def->controllers[k]->info.addr.pci.bus) {
-                                        /* Find the pcie-root-port this upstream port is attached to */
-                                        for (m = 0; m < def->ncontrollers; m++) {
-                                            if (def->controllers[m]->idx == def->controllers[l]->info.addr.pci.bus) {
-                                                /* Assign the root port to the next avail slot/func on
-                                                 * the PXB bus with corresponding SMMU node attached */
-                                                unsigned int nestedSmmuBus = def->nestedsmmus[j]->info->addr.pci.bus;
-                                                virDomainPCIAddressSet* set = virDomainPCIAddressSetAlloc(
-                                                                   def->nestedsmmus[j]->info->addr.pci.bus + 1,
-                                                                   VIR_PCI_ADDRESS_EXTENSION_NONE);
-                                                set->buses[nestedSmmuBus] = addrs->buses[nestedSmmuBus];
-                                                qemuDomainPCIAddressReserveNextAddr(set, &def->controllers[m]->info);
-                                                break;
-                                            }
-                                        }
-                                        break;
-                                    }
-                                }
-                                break;
-                            }
+            /* Find a hostdev and nested SMMU pair */
+            for (j = 0; j < def->nnestedsmmus; j++) {
+                unsigned int nestedSmmuBus = def->nestedsmmus[j]->info->addr.pci.bus;
+                if (!STREQLEN(def->nestedsmmus[j]->name, smmu_node, strlen(smmu_node)))
+                    continue;
+
+                if (!(correctPxb = qemuDomainGetUpstreamCont(def, def->nestedsmmus[j]->info,
+                                                           VIR_DOMAIN_CONTROLLER_MODEL_PCIE_EXPANDER_BUS)))
+                    return -1;
+
+                /* Find the controllers upstream of the hostdev */
+                if (!(downstreamPort =
+                      qemuDomainGetUpstreamCont(def, def->hostdevs[i]->info,
+                                                VIR_DOMAIN_CONTROLLER_MODEL_PCIE_SWITCH_DOWNSTREAM_PORT)))
+                    return -1;
+                if (!(upstreamPort =
+                      qemuDomainGetUpstreamCont(def, &downstreamPort->info,
+                                                VIR_DOMAIN_CONTROLLER_MODEL_PCIE_SWITCH_UPSTREAM_PORT)))
+                    return -1;
+                if (!(rootPort =
+                      qemuDomainGetUpstreamCont(def, &upstreamPort->info,
+                                                VIR_DOMAIN_CONTROLLER_MODEL_PCIE_ROOT_PORT)))
+                    return -1;
+
+                /* Check if the root port has already been routed to a PXB */
+                if ((pxb =
+                      qemuDomainGetUpstreamCont(def, &rootPort->info,
+                                                VIR_DOMAIN_CONTROLLER_MODEL_PCIE_EXPANDER_BUS))) {
+                    /* If already routed to the correct PXB, we're done */
+                    if (nestedSmmuBus == pxb->info.addr.pci.bus) {
+                        break;
+                    } else {
+                        /* If the correct PXB already has a different root port attached, route
+                         * the hostdev to it */
+                        if ((cont = qemuDomainGetEqualBusCont(def, correctPxb->idx,
+                                                             VIR_DOMAIN_CONTROLLER_MODEL_PCIE_ROOT_PORT))) {
+                            if (!(cont = qemuDomainGetEqualBusCont(def, cont->idx,
+                                                                   VIR_DOMAIN_CONTROLLER_MODEL_PCIE_SWITCH_UPSTREAM_PORT)))
+                                return -1;
+                            set = virDomainPCIAddressSetAlloc(
+                                            cont->idx + 1,
+                                            VIR_PCI_ADDRESS_EXTENSION_NONE);
+                            set->buses[cont->idx] = addrs->buses[cont->idx];
+                            qemuDomainPCIAddressReserveNextAddr(set, &downstreamPort->info);
+                            break;
                         }
+
+                        /* The correct PXB doesn't already have a root port attached, so
+                         * find a new one and route the correct PXB to hostdev with it. */
+                        if (!(cont = qemuDomainGetFreeCont(def, VIR_DOMAIN_CONTROLLER_MODEL_PCIE_ROOT_PORT)))
+                            return -1;
+                        set = virDomainPCIAddressSetAlloc(
+                                        nestedSmmuBus + 1,
+                                        VIR_PCI_ADDRESS_EXTENSION_NONE);
+                        set->buses[nestedSmmuBus] = addrs->buses[nestedSmmuBus];
+                        qemuDomainPCIAddressReserveNextAddr(set, &cont->info);
+                        if (!(cont = qemuDomainGetEqualBusCont(def, cont->idx,
+                                                               VIR_DOMAIN_CONTROLLER_MODEL_PCIE_SWITCH_UPSTREAM_PORT)))
+                            return -1;
+                        set = virDomainPCIAddressSetAlloc(
+                                        cont->idx + 1,
+                                        VIR_PCI_ADDRESS_EXTENSION_NONE);
+                        set->buses[cont->idx] = addrs->buses[cont->idx];
+                        qemuDomainPCIAddressReserveNextAddr(set, &downstreamPort->info);
                         break;
                     }
                 }
+
+                /* This hostdev's root port hasn't been routed to a PXB, but check if the correct PXB
+                 * already has a root port attached and route it there if so. */
+                if ((cont = qemuDomainGetEqualBusCont(def, correctPxb->idx,
+                                              VIR_DOMAIN_CONTROLLER_MODEL_PCIE_ROOT_PORT))) {
+                    if (!(cont = qemuDomainGetEqualBusCont(def, cont->idx,
+                                                           VIR_DOMAIN_CONTROLLER_MODEL_PCIE_SWITCH_UPSTREAM_PORT)))
+                        return -1;
+                    set = virDomainPCIAddressSetAlloc(
+                                       cont->idx + 1,
+                                       VIR_PCI_ADDRESS_EXTENSION_NONE);
+                    set->buses[cont->idx] = addrs->buses[cont->idx];
+                    qemuDomainPCIAddressReserveNextAddr(set, &downstreamPort->info);
+                    break;
+                }
+
+                /* This hostdev's root port hasn't been routed, and the correct PXB doesn't have
+                 * a root port attached, so route this hostdev's root port to next avail slot/func on
+                 * the PXB bus with corresponding SMMU node attached */
+                set = virDomainPCIAddressSetAlloc(
+                                   nestedSmmuBus + 1,
+                                   VIR_PCI_ADDRESS_EXTENSION_NONE);
+                set->buses[nestedSmmuBus] = addrs->buses[nestedSmmuBus];
+                qemuDomainPCIAddressReserveNextAddr(set, &rootPort->info);
             }
         }
     }
     return 0;
 }
+
 
 /*
  * This assigns static PCI slots to all configured devices.
