@@ -8700,8 +8700,9 @@ Example:
    ...
 
 ``model``
-   Supported values are ``intel`` (for Q35 guests) ``smmuv3``
-   (:since:`since 5.5.0`, for ARM virt guests), and ``virtio``
+   Supported values are ``intel`` (for Q35 guests), ``smmuv3``
+   (:since:`since 5.5.0`, for ARM virt guests), ``nestedsmmuv3``
+   (for ARM virt guests), and ``virtio``
    (:since:`since 8.3.0`, for Q35 and ARM virt guests).
 
 ``driver``
@@ -8768,6 +8769,27 @@ The optional ``driver`` element allows to specify virtio options, see
      </vsock>
    </devices>
    ...
+
+
+Nestedsmmuv3
+~~~~~~~~~~~~
+
+A representation of a host SMMU node. This is used to keep track of which
+controller to assign a VFIO device to in the VM if it is associated with a
+host SMMU node. This supports having multiple vSMMU nodes in the VM by
+attaching devices with different SMMU nodes to different pcie-expander-bus
+controllers in the VM. The ``name`` attribute denotes the host SMMU node's
+identifier parsed from the host's sysfs.
+
+::
+
+    ...
+    <devices>
+      <nestedsmmuv3>
+        <name>smmu3.0x0000000005000000</name>
+      </nestedsmmuv3>
+    </devices>
+    ...
 
 
 Crypto
