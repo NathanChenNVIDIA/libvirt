@@ -2840,6 +2840,27 @@ qemuDomainAddressFindNewTargetIndex(virDomainDef *def)
 
 
 static int
+qemuFindAttachedDevicesBusNr(virDomainDef *def, int lowestBusNr, int contIdx)
+{
+    size_t i;
+    for (i = 0; i < def->ncontrollers; i++) {
+        virDomainControllerDef *cont = def->controllers[i];
+        if (cont->info.addr.pci.bus == contIdx &&
+            cont->idx != 0) {
+            if (cont->model == VIR_DOMAIN_CONTROLLER_MODEL_PCIE_SWITCH_DOWNSTREAM_PORT) {
+                lowestBusNr = qemuFindAttachedDevicesBusNr(def, lowestBusNr - 2, cont->idx);
+            } else {
+                lowestBusNr = qemuFindAttachedDevicesBusNr(def, lowestBusNr - 1, cont->idx);
+            }
+        }
+        if (lowestBusNr <= 2)
+            return -1;
+    }
+    return lowestBusNr;
+}
+
+
+static int
 qemuDomainAddressFindNewBusNr(virDomainDef *def)
 {
     /* Try to find a nice default for busNr for a new pci-expander-bus.
@@ -2886,8 +2907,52 @@ qemuDomainAddressFindNewBusNr(virDomainDef *def)
      */
 
     size_t i;
+    size_t lowestBusNrContIdx = 0;
     int lowestBusNr = 256;
+    int tempBusNr = 0;
 
+    if (def->iommu && def->iommu->model &&
+        def->iommu->model == VIR_DOMAIN_IOMMU_MODEL_NESTED_SMMUV3) {
+        for (i = 0; i < def->ncontrollers; i++) {
+            virDomainControllerDef *cont = def->controllers[i];
+
+            if (cont->type == VIR_DOMAIN_CONTROLLER_TYPE_PCI) {
+                int thisBusNr = cont->opts.pciopts.busNr;
+
+                if (thisBusNr >= 0 && thisBusNr < lowestBusNr) {
+                    lowestBusNr = thisBusNr;
+                    lowestBusNrContIdx = i;
+                }
+            }
+        }
+
+        tempBusNr = lowestBusNr;
+
+        if (lowestBusNr <= 2)
+            return -1;
+
+        if (lowestBusNrContIdx == 0) {
+            for (i = 0; i < def->ncontrollers; i++) {
+                if (def->controllers[i]->model == VIR_DOMAIN_CONTROLLER_MODEL_PCIE_EXPANDER_BUS) {
+                    lowestBusNrContIdx = i;
+                    break;
+                }
+            }
+        } else {
+            for (i = lowestBusNrContIdx + 1; i < def->ncontrollers; i++) {
+                if (def->controllers[i]->model == VIR_DOMAIN_CONTROLLER_MODEL_PCIE_EXPANDER_BUS) {
+                    lowestBusNrContIdx = i;
+                    break;
+                }
+            }
+        }
+
+        lowestBusNr = qemuFindAttachedDevicesBusNr(def, lowestBusNr, def->controllers[lowestBusNrContIdx]->idx);
+        if (tempBusNr == lowestBusNr)
+            return lowestBusNr - 2;
+        else
+            return lowestBusNr;
+    }
     for (i = 0; i < def->ncontrollers; i++) {
         virDomainControllerDef *cont = def->controllers[i];
 
