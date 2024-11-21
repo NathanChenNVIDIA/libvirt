@@ -975,6 +975,7 @@ qemuBuildVirtioDevGetConfigDev(const virDomainDeviceDef *device,
         case VIR_DOMAIN_DEVICE_IOMMU:
         case VIR_DOMAIN_DEVICE_AUDIO:
         case VIR_DOMAIN_DEVICE_PSTORE:
+        case VIR_DOMAIN_DEVICE_IOMMUFD:
         case VIR_DOMAIN_DEVICE_LAST:
         default:
             break;
@@ -9577,6 +9578,26 @@ qemuBuildTPMsCommandLine(virCommand *cmd,
 
 
 static int
+qemuBuildIommufdCommandLine(virCommand *cmd,
+                                const virDomainDef *def,
+                                virQEMUCaps *qemuCaps)
+{
+    size_t i;
+    for (i = 0; i < def->niommufds; i++) {
+        g_autoptr(virJSONValue) props = NULL;
+        if (qemuMonitorCreateObjectProps(&props, "iommufd",
+                                         "S:id", def->iommufds[i]->id,
+                                         NULL) < 0)
+            return -1;
+
+        if (qemuBuildObjectCommandlineFromJSON(cmd, props, qemuCaps) < 0)
+            return -1;
+    }
+    return 0;
+}
+
+
+static int
 qemuBuildSEVCommandLine(virDomainObj *vm, virCommand *cmd,
                         virDomainSEVDef *sev)
 {
@@ -10565,6 +10586,9 @@ qemuBuildCommandLine(virDomainObj *vm,
         return NULL;
 
     if (qemuBuildSecCommandLine(vm, cmd, def->sec) < 0)
+        return NULL;
+
+    if (qemuBuildIommufdCommandLine(cmd, def, qemuCaps) < 0)
         return NULL;
 
     /* Internal snapshot reversion happens via QMP command after startup if

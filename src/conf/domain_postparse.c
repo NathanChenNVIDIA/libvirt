@@ -758,6 +758,7 @@ virDomainDeviceDefPostParseCommon(virDomainDeviceDef *dev,
     case VIR_DOMAIN_DEVICE_AUDIO:
     case VIR_DOMAIN_DEVICE_CRYPTO:
     case VIR_DOMAIN_DEVICE_PSTORE:
+    case VIR_DOMAIN_DEVICE_IOMMUFD:
         ret = 0;
         break;
 

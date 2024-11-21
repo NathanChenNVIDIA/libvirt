@@ -6323,6 +6323,18 @@
     </element>
   </define>
 
+  <define name="iommufd">
+    <element name="iommufd">
+      <interleave>
+        <optional>
+          <element name="id">
+            <text/>
+          </element>
+        </optional>
+      </interleave>
+    </element>
+  </define>
+
   <define name="pstore">
     <element name="pstore">
       <attribute name="backend">
@@ -6796,6 +6808,7 @@
             <ref name="shmem"/>
             <ref name="memorydev"/>
             <ref name="crypto"/>
+            <ref name="iommufd"/>
           </choice>
         </zeroOrMore>
         <zeroOrMore>

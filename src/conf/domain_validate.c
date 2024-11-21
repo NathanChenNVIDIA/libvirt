@@ -2213,6 +2213,18 @@ virDomainNetDefValidate(const virDomainNetDef *net)
 
 
 static int
+virDomainIommufdDefValidate(const virDomainIommufdDef *iommufd)
+{
+    if (iommufd->name[0] == '\0') {
+        virReportError(VIR_ERR_INTERNAL_ERROR, "%s",
+               _("iommufd must have an associated identifier"));
+        return -1;
+    }
+    return 0;
+}
+
+
+static int
 virDomainHostdevDefValidate(const virDomainHostdevDef *hostdev)
 {
     if (hostdev->mode == VIR_DOMAIN_HOSTDEV_MODE_SUBSYS) {
@@ -3201,6 +3213,9 @@ virDomainDeviceDefValidateInternal(const virDomainDeviceDef *dev,
 
     case VIR_DOMAIN_DEVICE_PSTORE:
         return virDomainPstoreDefValidate(dev->data.pstore);
+
+    case VIR_DOMAIN_DEVICE_IOMMUFD:
+        return virDomainIommufdDefValidate(dev->data.iommufd);
 
     case VIR_DOMAIN_DEVICE_LEASE:
     case VIR_DOMAIN_DEVICE_WATCHDOG:

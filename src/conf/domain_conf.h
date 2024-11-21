@@ -88,6 +88,7 @@ typedef enum {
     VIR_DOMAIN_DEVICE_AUDIO,
     VIR_DOMAIN_DEVICE_CRYPTO,
     VIR_DOMAIN_DEVICE_PSTORE,
+    VIR_DOMAIN_DEVICE_IOMMUFD,
 
     VIR_DOMAIN_DEVICE_LAST
 } virDomainDeviceType;
@@ -122,6 +123,7 @@ struct _virDomainDeviceDef {
         virDomainAudioDef *audio;
         virDomainCryptoDef *crypto;
         virDomainPstoreDef *pstore;
+        virDomainIommufdDef *iommufd;
     } data;
 };
 
@@ -378,6 +380,10 @@ struct _virDomainHostdevDef {
     virDomainDeviceInfo *info; /* Guest address */
 };
 
+
+struct _virDomainIommufdDef {
+    char* id;
+};
 
 /* Types of disk frontend (guest view).  For backends (host view), see
  * virStorageType in conf/storage_source_conf.h */
@@ -3192,6 +3198,9 @@ struct _virDomainDef {
     size_t nwatchdogs;
     virDomainWatchdogDef **watchdogs;
 
+    size_t niommufds;
+    virDomainIommufdDef **iommufds;
+
     /* At maximum 2 TPMs on the domain if a TPM Proxy is present. */
     size_t ntpms;
     virDomainTPMDef **tpms;
@@ -3678,6 +3687,8 @@ G_DEFINE_AUTOPTR_CLEANUP_FUNC(virDomainVideoDef, virDomainVideoDefFree);
 void virDomainVideoDefClear(virDomainVideoDef *def);
 virDomainHostdevDef *virDomainHostdevDefNew(void);
 void virDomainHostdevDefFree(virDomainHostdevDef *def);
+virDomainIommufdDef *virDomainIommufdDefNew(void);
+void virDomainIommufdDefFree(virDomainIommufdDef *def);
 void virDomainHubDefFree(virDomainHubDef *def);
 void virDomainRedirdevDefFree(virDomainRedirdevDef *def);
 void virDomainRedirFilterDefFree(virDomainRedirFilterDef *def);

@@ -341,6 +341,7 @@ VIR_ENUM_IMPL(virDomainDevice,
               "audio",
               "crypto",
               "pstore",
+              "iommufd",
 );
 
 VIR_ENUM_IMPL(virDomainDiskDevice,
@@ -3508,6 +3509,25 @@ void virDomainHostdevDefFree(virDomainHostdevDef *def)
         g_free(def);
 }
 
+void virDomainIommufdDefFree(virDomainIommufdDef *def)
+{
+    if (!def)
+        return;
+
+    g_free(def->id);
+
+    virDomainIommufdDefClear(def);
+}
+
+virDomainIommufdDef *
+virDomainIommufdDefNew(void)
+{
+    virDomainIommufdDef *def;
+    def = g_new0(virDomainIommufdDef, 1);
+    
+    return def;
+}
+
 void virDomainHubDefFree(virDomainHubDef *def)
 {
     if (!def)
@@ -3669,6 +3689,9 @@ void virDomainDeviceDefFree(virDomainDeviceDef *def)
         break;
     case VIR_DOMAIN_DEVICE_PSTORE:
         virDomainPstoreDefFree(def->data.pstore);
+        break;
+    case VIR_DOMAIN_DEVICE_IOMMUFD:
+        virDomainIommufdDefFree(def->data.iommufd);
         break;
     case VIR_DOMAIN_DEVICE_LAST:
     case VIR_DOMAIN_DEVICE_NONE:
@@ -4601,6 +4624,7 @@ virDomainDeviceGetInfo(const virDomainDeviceDef *device)
     case VIR_DOMAIN_DEVICE_LEASE:
     case VIR_DOMAIN_DEVICE_GRAPHICS:
     case VIR_DOMAIN_DEVICE_AUDIO:
+    case VIR_DOMAIN_DEVICE_IOMMUFD:
     case VIR_DOMAIN_DEVICE_LAST:
     case VIR_DOMAIN_DEVICE_NONE:
         break;
@@ -4703,6 +4727,9 @@ virDomainDeviceSetData(virDomainDeviceDef *device,
         break;
     case VIR_DOMAIN_DEVICE_PSTORE:
         device->data.pstore = devicedata;
+        break;
+    case VIR_DOMAIN_DEVICE_IOMMUFD:
+        device->data.iommufd = devicedata;
         break;
     case VIR_DOMAIN_DEVICE_NONE:
     case VIR_DOMAIN_DEVICE_LAST:
@@ -4989,6 +5016,7 @@ virDomainDeviceInfoIterateFlags(virDomainDef *def,
     case VIR_DOMAIN_DEVICE_AUDIO:
     case VIR_DOMAIN_DEVICE_CRYPTO:
     case VIR_DOMAIN_DEVICE_PSTORE:
+    case VIR_DOMAIN_DEVICE_IOMMUFD:
         break;
     }
 #endif
@@ -13230,6 +13258,33 @@ virDomainVideoDefParseXML(virDomainXMLOption *xmlopt,
     return g_steal_pointer(&def);
 }
 
+static virDomainIommufdDef *
+virDomainIommufdDefParseXML(virDomainXMLOption *xmlopt,
+                            xmlNodePtr node,
+                            xmlXPathContextPtr ctxt,
+                            unsigned int flags)
+{
+    virDomainIommufdDef *def;
+    VIR_XPATH_NODE_AUTORESTORE(ctxt);
+    size_t len;
+
+    ctxt->node = node;
+
+    if (!(def = virDomainIommufdDefNew()))
+        goto error;
+
+    len = strlen(virXPathString("string(./id)", ctxt)) + 1;
+    VIR_REALLOC_N(def->id, len);
+    if (!def->id)
+        goto error;
+    virStrCpy(def->id, virXPathString("string(./id)", ctxt), len);
+
+    return def;
+error:
+    virDomainIommufdDefFree(def);
+    return NULL;
+}
+
 static virDomainHostdevDef *
 virDomainHostdevDefParseXML(virDomainXMLOption *xmlopt,
                             xmlNodePtr node,
@@ -14310,6 +14365,12 @@ virDomainDeviceDefParse(const char *xmlStr,
         break;
     case VIR_DOMAIN_DEVICE_PSTORE:
         if (!(dev->data.pstore = virDomainPstoreDefParseXML(xmlopt, node,
+                                                            ctxt, flags))) {
+            return NULL;
+        }
+        break;
+    case VIR_DOMAIN_DEVICE_IOMMUFD:
+        if (!(dev->data.iommufd = virDomainIommufdDefParseXML(xmlopt, node,
                                                             ctxt, flags))) {
             return NULL;
         }
@@ -19754,6 +19815,21 @@ virDomainDefParseXML(xmlXPathContextPtr ctxt,
     if (virDomainKeyWrapDefParseXML(def, ctxt) < 0)
         return NULL;
 
+    /* Analysis of the iommufd */
+    if ((n = virXPathNodeSet("./devices/iommufd", ctxt, &nodes)) < 0)
+        return NULL;
+    if (n > 0)
+        VIR_REALLOC_N(def->iommufds, def->niommufds + n);
+    for (i = 0; i < n; i++) {
+        virDomainIommufdDef *iommufd;
+        iommufd = virDomainIommufdDefParseXML(xmlopt, nodes[i], ctxt,
+                                              flags);
+        if (!iommufd)
+            return NULL;
+        def->iommufds[def->niommufds++] = iommufd;
+    }
+    VIR_FREE(nodes);
+
     /* Extract custom metadata */
     if ((node = virXPathNode("./metadata[1]", ctxt)) != NULL)
         def->metadata = xmlCopyNode(node, 1);
@@ -22078,6 +22154,13 @@ virDomainDefCheckABIStabilityFlags(virDomainDef *src,
         goto error;
     }
 
+    if (src->niommufds != dst->niommufds) {
+        virReportError(VIR_ERR_CONFIG_UNSUPPORTED,
+                       _("Target domain nested SMMUs count %1$zu does not match source %2$zu"),
+                       dst->nnestedsmmus, src->nnestedsmmus);
+        goto error;
+    }
+
     if (xmlopt && xmlopt->abi.domain &&
         !xmlopt->abi.domain(src, dst))
         goto error;
@@ -22119,6 +22202,7 @@ virDomainDefCheckABIStabilityFlags(virDomainDef *src,
     case VIR_DOMAIN_DEVICE_AUDIO:
     case VIR_DOMAIN_DEVICE_CRYPTO:
     case VIR_DOMAIN_DEVICE_PSTORE:
+    case VIR_DOMAIN_DEVICE_IOMMUFD:
         break;
     }
 #endif
@@ -26608,6 +26692,21 @@ virDomainGraphicsDefFormat(virBuffer *buf,
 
 
 static int
+virDomainIommufdDefFormat(virBuffer *buf,
+                          virDomainIommufdDef *def,
+                          unsigned int flags,
+                          virDomainXMLOption *xmlopt)
+{
+    virBufferAddLit(buf, "<iommufd>\n");
+    virBufferAdjustIndent(buf, 2);
+    virBufferAsprintf(buf, "<id>%s</id>\n", def->id);
+    virBufferAdjustIndent(buf, -2);
+    virBufferAddLit(buf, "</iommufd>\n");
+    return 0;
+}
+
+
+static int
 virDomainHostdevDefFormat(virBuffer *buf,
                           virDomainHostdevDef *def,
                           unsigned int flags,
@@ -28593,6 +28692,11 @@ virDomainDefFormatInternalSetRootName(virDomainDef *def,
     if (def->pstore)
         virDomainPstoreDefFormat(buf, def->pstore, flags);
 
+    for (n = 0; n < def->niommufds; n++) {
+        if (virDomainIommufdDefFormat(buf, def->iommufds[n], flags) < 0
+            return -1;
+    }
+
     virBufferAdjustIndent(buf, -2);
     virBufferAddLit(buf, "</devices>\n");
 
@@ -28753,6 +28857,7 @@ virDomainDeviceIsUSB(virDomainDeviceDef *dev,
     case VIR_DOMAIN_DEVICE_AUDIO:
     case VIR_DOMAIN_DEVICE_CRYPTO:
     case VIR_DOMAIN_DEVICE_PSTORE:
+    case VIR_DOMAIN_DEVICE_IOMMUFD:
     break;
     }
 
