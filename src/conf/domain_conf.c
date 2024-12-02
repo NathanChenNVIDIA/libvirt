@@ -9329,6 +9329,16 @@ virDomainNetAppendIPAddress(virDomainNetDef *def,
 }
 
 
+static void
+virDomainIommufdParseXML(xmlXPathContextPtr ctxt,
+                         char** iommufd)
+{
+    g_autofree char *iommufdId = virXPathString("string(./iommufd)", ctxt);
+    if (iommufdId)
+        *iommufd = g_steal_pointer(&iommufdId);
+}
+
+
 static int
 virDomainNetTeamingInfoParseXML(xmlXPathContextPtr ctxt,
                                 virDomainNetTeamingInfo **teaming)
@@ -13397,6 +13407,8 @@ virDomainHostdevDefParseXML(virDomainXMLOption *xmlopt,
 
     if (virDomainNetTeamingInfoParseXML(ctxt, &def->teaming) < 0)
         goto error;
+
+    virDomainIommufdParseXML(ctxt, &def->iommufd);
 
     return def;
 
@@ -26961,6 +26973,8 @@ virDomainHostdevDefFormat(virBuffer *buf,
         virBufferAddLit(buf, "<readonly/>\n");
     if (def->shareable)
         virBufferAddLit(buf, "<shareable/>\n");
+    if (def->iommufd)
+        virBufferAsprintf(buf, "<iommufd>%s</iommufd>\n", def->iommufd);
 
     virDomainDeviceInfoFormat(buf, def->info, flags | VIR_DOMAIN_DEF_FORMAT_ALLOW_BOOT
                                                     | VIR_DOMAIN_DEF_FORMAT_ALLOW_ROM);

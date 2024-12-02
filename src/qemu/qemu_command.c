@@ -4643,6 +4643,7 @@ qemuBuildPCIHostdevDevProps(const virDomainDef *def,
                               "S:failover_pair_id", failover_pair_id,
                               "S:display", qemuOnOffAuto(pcisrc->display),
                               "B:ramfb", ramfb,
+                              "S:iommufd", dev->iommufd,
                               NULL) < 0)
         return NULL;
 
@@ -5044,6 +5045,22 @@ qemuBuildNestedSmmuv3CommandLine(virCommand *cmd,
 
 
 static int
+qemuBuildIommufdCommandLine(virCommand *cmd,
+                                const virDomainHostdevDef *hostdev,
+                                virQEMUCaps *qemuCaps)
+{
+    g_autoptr(virJSONValue) props = NULL;
+    if (qemuMonitorCreateObjectProps(&props, "iommufd",
+                                     hostdev->iommufd,
+                                     NULL) < 0)
+        return -1;
+    if (qemuBuildObjectCommandlineFromJSON(cmd, props, qemuCaps) < 0)
+        return -1;
+    return 0;
+}
+
+
+static int
 qemuBuildHostdevCommandLine(virCommand *cmd,
                             const virDomainDef *def,
                             virQEMUCaps *qemuCaps)
@@ -5085,6 +5102,11 @@ qemuBuildHostdevCommandLine(virCommand *cmd,
 
             if (qemuBuildDeviceCommandlineFromJSON(cmd, devprops, def, qemuCaps) < 0)
                 return -1;
+
+            if (hostdev->iommufd) {
+                if (qemuBuildIommufdCommandLine(cmd, hostdev, qemuCaps) < 0)
+                    return -1;
+            }
             break;
 
         /* SCSI */
