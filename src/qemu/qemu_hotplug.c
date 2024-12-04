@@ -1564,6 +1564,9 @@ qemuDomainAttachHostPCIDevice(virQEMUDriver *driver,
 
     if (qemuSetupHostdevCgroup(vm, hostdev) < 0)
         goto error;
+
+    if (qemuSetupIommufdCgroup(vm) < 0)
+        goto error;
     teardowncgroup = true;
 
     if (qemuSecuritySetHostdevLabel(driver, vm, hostdev) < 0)
@@ -1619,6 +1622,8 @@ qemuDomainAttachHostPCIDevice(virQEMUDriver *driver,
  error:
     if (teardowncgroup && qemuTeardownHostdevCgroup(vm, hostdev) < 0)
         VIR_WARN("Unable to remove host device cgroup ACL on hotplug fail");
+    if (teardowncgroup && qemuTeardownIommufdCgroup(vm) < 0)
+        VIR_WARN("Unable to remove host device iommufd cgroup ACL on hotplug fail");
     if (teardownlabel &&
         qemuSecurityRestoreHostdevLabel(driver, vm, hostdev) < 0)
         VIR_WARN("Unable to restore host device labelling on hotplug fail");
@@ -2464,6 +2469,9 @@ qemuDomainAttachHostUSBDevice(virQEMUDriver *driver,
 
     if (qemuSetupHostdevCgroup(vm, hostdev) < 0)
         goto cleanup;
+
+    if (qemuSetupIommufdCgroup(vm) < 0)
+        goto cleanup;
     teardowncgroup = true;
 
     if (qemuSecuritySetHostdevLabel(driver, vm, hostdev) < 0)
@@ -2491,6 +2499,8 @@ qemuDomainAttachHostUSBDevice(virQEMUDriver *driver,
     if (ret < 0) {
         if (teardowncgroup && qemuTeardownHostdevCgroup(vm, hostdev) < 0)
             VIR_WARN("Unable to remove host device cgroup ACL on hotplug fail");
+        if (teardowncgroup && qemuTeardownIommufdCgroup(vm) < 0)
+            VIR_WARN("Unable to remove host device iommufd cgroup ACL on hotplug fail");
         if (teardownlabel &&
             qemuSecurityRestoreHostdevLabel(driver, vm, hostdev) < 0)
             VIR_WARN("Unable to restore host device labelling on hotplug fail");
@@ -2541,6 +2551,9 @@ qemuDomainAttachHostSCSIDevice(virQEMUDriver *driver,
 
     if (qemuSetupHostdevCgroup(vm, hostdev) < 0)
         goto cleanup;
+
+    if (qemuSetupIommufdCgroup(vm) < 0)
+        goto cleanup;
     teardowncgroup = true;
 
     if (qemuSecuritySetHostdevLabel(driver, vm, hostdev) < 0)
@@ -2580,6 +2593,8 @@ qemuDomainAttachHostSCSIDevice(virQEMUDriver *driver,
         qemuHostdevReAttachSCSIDevices(driver, vm->def->name, &hostdev, 1);
         if (teardowncgroup && qemuTeardownHostdevCgroup(vm, hostdev) < 0)
             VIR_WARN("Unable to remove host device cgroup ACL on hotplug fail");
+        if (teardowncgroup && qemuTeardownIommufdCgroup(vm) < 0)
+            VIR_WARN("Unable to remove host device iommufd cgroup ACL on hotplug fail");
         if (teardownlabel &&
             qemuSecurityRestoreHostdevLabel(driver, vm, hostdev) < 0)
             VIR_WARN("Unable to restore host device labelling on hotplug fail");
@@ -2628,6 +2643,8 @@ qemuDomainAttachSCSIVHostDevice(virQEMUDriver *driver,
         goto cleanup;
 
     if (qemuSetupHostdevCgroup(vm, hostdev) < 0)
+        goto cleanup;
+    if (qemuSetupIommufdCgroup(vm) < 0)
         goto cleanup;
     teardowncgroup = true;
 
@@ -2705,6 +2722,8 @@ qemuDomainAttachSCSIVHostDevice(virQEMUDriver *driver,
     if (ret < 0) {
         if (teardowncgroup && qemuTeardownHostdevCgroup(vm, hostdev) < 0)
             VIR_WARN("Unable to remove host device cgroup ACL on hotplug fail");
+        if (teardowncgroup && qemuTeardownIommufdCgroup(vm) < 0)
+            VIR_WARN("Unable to remove host device iommufd cgroup ACL on hotplug fail");
         if (teardownlabel &&
             qemuSecurityRestoreHostdevLabel(driver, vm, hostdev) < 0)
             VIR_WARN("Unable to restore host device labelling on hotplug fail");
@@ -2766,6 +2785,9 @@ qemuDomainAttachMediatedDevice(virQEMUDriver *driver,
 
     if (qemuSetupHostdevCgroup(vm, hostdev) < 0)
         goto cleanup;
+
+    if (qemuSetupIommufdCgroup(vm) < 0)
+        goto cleanup;
     teardowncgroup = true;
 
     if (qemuSecuritySetHostdevLabel(driver, vm, hostdev) < 0)
@@ -2800,6 +2822,8 @@ qemuDomainAttachMediatedDevice(virQEMUDriver *driver,
             VIR_WARN("Unable to reset maximum locked memory on hotplug fail");
         if (teardowncgroup && qemuTeardownHostdevCgroup(vm, hostdev) < 0)
             VIR_WARN("Unable to remove host device cgroup ACL on hotplug fail");
+        if (teardowncgroup && qemuTeardownIommufdCgroup(vm) < 0)
+            VIR_WARN("Unable to remove host device iommufd cgroup ACL on hotplug fail");
         if (teardownlabel &&
             qemuSecurityRestoreHostdevLabel(driver, vm, hostdev) < 0)
             VIR_WARN("Unable to restore host device labelling on hotplug fail");
@@ -4840,7 +4864,6 @@ qemuDomainRemoveSCSIVHostDevice(virQEMUDriver *driver,
     qemuHostdevReAttachSCSIVHostDevices(driver, vm->def->name, &hostdev, 1);
 }
 
-
 static void
 qemuDomainRemoveMediatedDevice(virQEMUDriver *driver,
                                virDomainObj *vm,
@@ -4899,6 +4922,9 @@ qemuDomainRemoveHostDevice(virQEMUDriver *driver,
     if (qemuTeardownHostdevCgroup(vm, hostdev) < 0)
         VIR_WARN("Failed to remove host device cgroup ACL");
 
+    if (qemuTeardownIommufdCgroup(vm) < 0)
+        VIR_WARN("Unable to remove host device iommufd cgroup ACL on hotplug fail");
+
     if (qemuDomainNamespaceTeardownHostdev(vm, hostdev) < 0)
         VIR_WARN("Unable to remove host device from /dev");
 
@@ -4956,7 +4982,9 @@ qemuDomainRemoveNetDevice(virQEMUDriver *driver,
     int actualType = virDomainNetGetActualType(net);
 
     if (actualType == VIR_DOMAIN_NET_TYPE_HOSTDEV) {
-        /* this function handles all hostdev and netdev cleanup */
+        /* these functions handle all hostdev and netdev cleanup */
+        if (qemuDomainNamespaceTeardownIommufd(vm) < 0)
+            VIR_WARN("Unable to remove host device iommufd from /dev");
         return qemuDomainRemoveHostDevice(driver, vm,
                                           virDomainNetGetActualHostdev(net));
     }
@@ -5475,6 +5503,8 @@ qemuDomainRemoveDevice(virQEMUDriver *driver,
             return -1;
         break;
     case VIR_DOMAIN_DEVICE_HOSTDEV:
+        if (qemuDomainNamespaceTeardownIommufd(vm) < 0)
+            VIR_WARN("Unable to remove host device iommufd from /dev");
         if (qemuDomainRemoveHostDevice(driver, vm, dev->data.hostdev) < 0)
             return -1;
         break;

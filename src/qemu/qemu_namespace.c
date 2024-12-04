@@ -356,14 +356,39 @@ qemuDomainSetupAllHostdevs(virDomainObj *vm,
                            GSList **paths)
 {
     size_t i;
+    bool iommufdEnabled = false;
+    g_autoptr(DIR) dir = NULL;
+    struct dirent *dent;
+    g_autofree char *path = NULL;
 
     VIR_DEBUG("Setting up hostdevs");
     for (i = 0; i < vm->def->nhostdevs; i++) {
+        if (vm->def->hostdevs[i]->iommufd)
+            iommufdEnabled = true;
         if (qemuDomainSetupHostdev(vm,
                                    vm->def->hostdevs[i],
                                    false,
                                    paths) < 0)
             return -1;
+    }
+
+    if (iommufdEnabled) {
+        if (virDirOpen(&dir, "/dev/vfio/devices") < 0) {
+            if (errno == ENOENT)
+                return 0;
+            return -1;
+        }
+        while (virDirRead(dir, &dent, "/dev/vfio/devices") > 0) {
+            if (STRPREFIX(dent->d_name, "vfio")) {
+                path = g_strdup_printf("/dev/vfio/devices/%s", dent->d_name);
+                *paths = g_slist_prepend(*paths, g_steal_pointer(&path));
+            }
+        }
+        path = NULL;
+        if (virFileExists("/dev/iommu"))
+            path = g_strdup("/dev/iommu");
+        if (path)
+            *paths = g_slist_prepend(*paths, g_steal_pointer(&path));
     }
     VIR_DEBUG("Setup all hostdevs");
     return 0;
@@ -1605,6 +1630,50 @@ qemuDomainNamespaceTeardownHostdev(virDomainObj *vm,
                                true,
                                &paths) < 0)
         return -1;
+
+    if (qemuNamespaceUnlinkPaths(vm, paths) < 0)
+        return -1;
+
+    return 0;
+}
+
+
+int
+qemuDomainNamespaceTeardownIommufd(virDomainObj *vm)
+{
+    size_t i;
+    bool iommufdEnabled = false;
+    g_autoptr(DIR) dir = NULL;
+    struct dirent *dent;
+    g_autoptr(virGSListString) paths = NULL;
+    g_autofree char *path = NULL;
+
+    if (!qemuDomainNamespaceEnabled(vm, QEMU_DOMAIN_NS_MOUNT))
+        return 0;
+
+    for (i = 0; i < vm->def->nhostdevs; i++) {
+        if (vm->def->hostdevs[i]->iommufd)
+            iommufdEnabled = true;
+    }
+
+    if (iommufdEnabled) {
+        if (virDirOpen(&dir, "/dev/vfio/devices") < 0) {
+            if (errno == ENOENT)
+                return 0;
+            return -1;
+        }
+        while (virDirRead(dir, &dent, "/dev/vfio/devices") > 0) {
+            if (STRPREFIX(dent->d_name, "vfio")) {
+                path = g_strdup_printf("/dev/vfio/devices/%s", dent->d_name);
+                paths = g_slist_prepend(paths, g_steal_pointer(&path));
+            }
+        }
+        path = NULL;
+        if (virFileExists("/dev/iommu"))
+            path = g_strdup("/dev/iommu");
+        if (path)
+            paths = g_slist_prepend(paths, g_steal_pointer(&path));
+    }
 
     if (qemuNamespaceUnlinkPaths(vm, paths) < 0)
         return -1;

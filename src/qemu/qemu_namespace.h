@@ -56,6 +56,8 @@ int qemuDomainNamespaceSetupDisk(virDomainObj *vm,
                                  virStorageSource *src,
                                  bool *created);
 
+int qemuDomainNamespaceTeardownIommufd(virDomainObj *vm);
+
 int qemuDomainNamespaceTeardownDisk(virDomainObj *vm,
                                     virStorageSource *src);
 

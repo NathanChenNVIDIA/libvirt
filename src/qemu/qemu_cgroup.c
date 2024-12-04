@@ -464,6 +464,104 @@ qemuTeardownInputCgroup(virDomainObj *vm,
 }
 
 
+int
+qemuSetupIommufdCgroup(virDomainObj *vm)
+{
+    qemuDomainObjPrivate *priv = vm->privateData;
+    g_autoptr(DIR) dir = NULL;
+    struct dirent *dent;
+    g_autofree char *path = NULL;
+    bool iommufdEnabled = false;
+    size_t i;
+
+    for (i = 0; i < vm->def->nhostdevs; i++) {
+        if (vm->def->hostdevs[i]->iommufd)
+            iommufdEnabled = true;
+    }
+
+    if (iommufdEnabled) {
+        if (!virCgroupHasController(priv->cgroup, VIR_CGROUP_CONTROLLER_DEVICES))
+            return 0;
+
+        if (virDirOpen(&dir, "/dev/vfio/devices") < 0) {
+            if (errno == ENOENT)
+                return 0;
+            return -1;
+        }
+
+        while (virDirRead(dir, &dent, "/dev/vfio/devices") > 0) {
+            if (STRPREFIX(dent->d_name, "vfio")) {
+                path = g_strdup_printf("/dev/vfio/devices/%s", dent->d_name);
+            }
+            if (path &&
+                qemuCgroupAllowDevicePath(vm, path,
+                                          VIR_CGROUP_DEVICE_RW, false) < 0) {
+                return -1;
+            }
+            path = NULL;
+        }
+        if (virFileExists("/dev/iommu"))
+            path = g_strdup("/dev/iommu");
+        if (path &&
+            qemuCgroupAllowDevicePath(vm, path,
+                                      VIR_CGROUP_DEVICE_RW, false) < 0) {
+            return -1;
+        }
+    }
+
+    return 0;
+}
+
+
+int
+qemuTeardownIommufdCgroup(virDomainObj *vm)
+{
+    qemuDomainObjPrivate *priv = vm->privateData;
+    g_autofree char *path = NULL;
+    g_autoptr(DIR) dir = NULL;
+    struct dirent *dent;
+    bool iommufdEnabled = false;
+    size_t i;
+
+    for (i = 0; i < vm->def->nhostdevs; i++) {
+        if (vm->def->hostdevs[i]->iommufd)
+            iommufdEnabled = true;
+    }
+
+    if (iommufdEnabled) {
+        if (!virCgroupHasController(priv->cgroup, VIR_CGROUP_CONTROLLER_DEVICES))
+            return 0;
+
+        if (virDirOpen(&dir, "/dev/vfio/devices") < 0) {
+            if (errno == ENOENT)
+                return 0;
+            return -1;
+        }
+
+        while (virDirRead(dir, &dent, "/dev/vfio/devices") > 0) {
+            if (STRPREFIX(dent->d_name, "vfio")) {
+                path = g_strdup_printf("/dev/vfio/devices/%s", dent->d_name);
+            }
+            if (path &&
+                qemuCgroupDenyDevicePath(vm, path,
+                                          VIR_CGROUP_DEVICE_RWM, false) < 0) {
+                return -1;
+            }
+            path = NULL;
+        }
+        if (virFileExists("/dev/iommu"))
+            path = g_strdup("/dev/iommu");
+        if (path &&
+            qemuCgroupDenyDevicePath(vm, path,
+                                      VIR_CGROUP_DEVICE_RWM, false) < 0) {
+            return -1;
+        }
+    }
+
+    return 0;
+}
+
+
 /**
  * qemuSetupHostdevCgroup:
  * vm: domain object
@@ -831,6 +929,9 @@ qemuSetupDevicesCgroup(virDomainObj *vm)
         if (qemuSetupHostdevCgroup(vm, vm->def->hostdevs[i]) < 0)
             return -1;
     }
+
+    if (qemuSetupIommufdCgroup(vm) < 0)
+        return -1;
 
     for (i = 0; i < vm->def->nmems; i++) {
         if (qemuSetupMemoryDevicesCgroup(vm, vm->def->mems[i]) < 0)
