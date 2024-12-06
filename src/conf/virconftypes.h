@@ -122,6 +122,8 @@ typedef struct _virDomainHostdevCaps virDomainHostdevCaps;
 
 typedef struct _virDomainHostdevDef virDomainHostdevDef;
 
+typedef struct _virDomainNestedSmmuv3Def virDomainNestedSmmuv3Def;
+
 typedef struct _virDomainHostdevSubsys virDomainHostdevSubsys;
 
 typedef struct _virDomainHostdevSubsysMediatedDev virDomainHostdevSubsysMediatedDev;
