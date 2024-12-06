@@ -470,6 +470,7 @@ qemuDomainDeviceSupportZPCI(virDomainDeviceDef *device)
     case VIR_DOMAIN_DEVICE_VSOCK:
     case VIR_DOMAIN_DEVICE_AUDIO:
     case VIR_DOMAIN_DEVICE_CRYPTO:
+    case VIR_DOMAIN_DEVICE_NESTED_SMMUV3:
     case VIR_DOMAIN_DEVICE_PSTORE:
         break;
 
@@ -817,6 +818,10 @@ qemuDomainDeviceCalculatePCIConnectFlags(virDomainDeviceDef *dev,
             return pcieFlags;
 
         return pciFlags;
+    }
+
+    case VIR_DOMAIN_DEVICE_NESTED_SMMUV3: {
+        return VIR_PCI_CONNECT_TYPE_NESTED_SMMUV3;
     }
 
     case VIR_DOMAIN_DEVICE_MEMBALLOON:
