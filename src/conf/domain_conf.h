@@ -88,6 +88,7 @@ typedef enum {
     VIR_DOMAIN_DEVICE_AUDIO,
     VIR_DOMAIN_DEVICE_CRYPTO,
     VIR_DOMAIN_DEVICE_PSTORE,
+    VIR_DOMAIN_DEVICE_NESTED_SMMUV3,
 
     VIR_DOMAIN_DEVICE_LAST
 } virDomainDeviceType;
@@ -122,6 +123,7 @@ struct _virDomainDeviceDef {
         virDomainAudioDef *audio;
         virDomainCryptoDef *crypto;
         virDomainPstoreDef *pstore;
+        virDomainNestedSmmuv3Def *nestedsmmuv3;
     } data;
 };
 
@@ -352,6 +354,11 @@ typedef enum {
 
     VIR_DOMAIN_STARTUP_POLICY_LAST
 } virDomainStartupPolicy;
+
+struct _virDomainNestedSmmuv3Def {
+    char *name;
+    virDomainDeviceInfo *info; /* Guest address */
+};
 
 /* basic device for direct passthrough */
 struct _virDomainHostdevDef {
@@ -3197,6 +3204,9 @@ struct _virDomainDef {
     size_t ntpms;
     virDomainTPMDef **tpms;
 
+    size_t nnestedsmmus;
+    virDomainNestedSmmuv3Def **nestedsmmus;
+
     /* Only 1 */
     virDomainMemballoonDef *memballoon;
     virDomainNVRAMDef *nvram;
@@ -3677,6 +3687,8 @@ virDomainVideoDef *virDomainVideoDefNew(virDomainXMLOption *xmlopt);
 void virDomainVideoDefFree(virDomainVideoDef *def);
 G_DEFINE_AUTOPTR_CLEANUP_FUNC(virDomainVideoDef, virDomainVideoDefFree);
 void virDomainVideoDefClear(virDomainVideoDef *def);
+virDomainNestedSmmuv3Def *virDomainNestedSmmuv3DefNew(void);
+void virDomainNestedSmmuv3DefFree(virDomainNestedSmmuv3Def *def);
 virDomainHostdevDef *virDomainHostdevDefNew(void);
 void virDomainHostdevDefFree(virDomainHostdevDef *def);
 void virDomainHubDefFree(virDomainHubDef *def);

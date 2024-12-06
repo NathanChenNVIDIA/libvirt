@@ -157,6 +157,10 @@ qemuBuildThreadContextProps(virJSONValue **tcProps,
                             qemuDomainObjPrivate *priv,
                             virBitmap *nodemask);
 
+virJSONValue *
+qemuBuildPCINestedSmmuv3DevProps(const virDomainDef *def,
+                            virDomainNestedSmmuv3Def *nestedsmmuv3);
+
 /* Current, best practice */
 virJSONValue *
 qemuBuildPCIHostdevDevProps(const virDomainDef *def,
