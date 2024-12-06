@@ -177,6 +177,7 @@ if conf.has('WITH_QEMU')
     { 'name': 'qemuhotplugmock', 'link_with': [ test_qemu_driver_lib, test_utils_qemu_lib, test_utils_lib ] },
     { 'name': 'qemuxml2argvmock' },
     { 'name': 'virhostidmock' },
+    { 'name': 'virnestedsmmuv3mock' },
   ]
 else
   test_qemu_driver_lib = []
