@@ -2783,6 +2783,7 @@ mymain(void)
     DO_TEST_CAPS_LATEST_ABI_UPDATE("intel-iommu-eim-autoadd");
     DO_TEST_CAPS_LATEST_ABI_UPDATE("intel-iommu-eim-autoadd-v2");
     DO_TEST_CAPS_ARCH_LATEST("iommu-smmuv3", "aarch64");
+    DO_TEST_CAPS_ARCH_LATEST("iommu-nestedsmmuv3", "aarch64");
     DO_TEST_CAPS_LATEST("virtio-iommu-x86_64");
     DO_TEST_CAPS_VER_PARSE_ERROR("virtio-iommu-x86_64", "6.1.0");
     DO_TEST_CAPS_ARCH_LATEST("virtio-iommu-aarch64", "aarch64");
@@ -3041,7 +3042,8 @@ VIR_TEST_MAIN_PRELOAD(mymain,
                       VIR_TEST_MOCK("virrandom"),
                       VIR_TEST_MOCK("qemucpu"),
                       VIR_TEST_MOCK("virpci"),
-                      VIR_TEST_MOCK("virnuma"))
+                      VIR_TEST_MOCK("virnuma"),
+                      VIR_TEST_MOCK("virnestedsmmuv3"))
 
 #else
 
