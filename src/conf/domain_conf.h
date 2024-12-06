@@ -3873,6 +3873,8 @@ bool virDomainDefCheckABIStabilityFlags(virDomainDef *src,
 int virDomainDefAddImplicitDevices(virDomainDef *def,
                                    virDomainXMLOption *xmlopt);
 
+int virDomainDefAddImplicitNestedSmmuv3(virDomainDef *def) G_NO_INLINE;
+
 virDomainIOThreadIDDef *virDomainIOThreadIDFind(const virDomainDef *def,
                                                 unsigned int iothread_id);
 virDomainIOThreadIDDef *virDomainIOThreadIDAdd(virDomainDef *def,
