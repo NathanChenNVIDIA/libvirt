@@ -22491,7 +22491,7 @@ virDomainDefAddImplicitVideo(virDomainDef *def, virDomainXMLOption *xmlopt)
     return 0;
 }
 
-static int
+int
 virDomainDefAddImplicitNestedSmmuv3(virDomainDef *def)
 {
     // Get the number of host-level SMMUv3 instances
