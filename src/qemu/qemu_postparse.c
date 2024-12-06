@@ -904,6 +904,7 @@ qemuDomainDeviceDefPostParse(virDomainDeviceDef *dev,
     case VIR_DOMAIN_DEVICE_NVRAM:
     case VIR_DOMAIN_DEVICE_RNG:
     case VIR_DOMAIN_DEVICE_AUDIO:
+    case VIR_DOMAIN_DEVICE_NESTED_SMMUV3:
     case VIR_DOMAIN_DEVICE_CRYPTO:
         ret = 0;
         break;

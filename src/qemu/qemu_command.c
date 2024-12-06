@@ -991,6 +991,7 @@ qemuBuildVirtioDevGetConfigDev(const virDomainDeviceDef *device,
         case VIR_DOMAIN_DEVICE_IOMMU:
         case VIR_DOMAIN_DEVICE_AUDIO:
         case VIR_DOMAIN_DEVICE_PSTORE:
+        case VIR_DOMAIN_DEVICE_NESTED_SMMUV3:
         case VIR_DOMAIN_DEVICE_LAST:
         default:
             break;
@@ -6927,6 +6928,7 @@ qemuBuildMachineCommandLine(virCommand *cmd,
             /* These IOMMUs are formatted in qemuBuildIOMMUCommandLine */
             break;
         case VIR_DOMAIN_IOMMU_MODEL_NESTED_SMMUV3:
+            virBufferAddLit(&buf, ",iommu=nested-smmuv3");
             break;
         case VIR_DOMAIN_IOMMU_MODEL_LAST:
         default:
