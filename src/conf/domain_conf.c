@@ -2814,6 +2814,10 @@ virDomainIOMMUDefFree(virDomainIOMMUDef *iommu)
     if (!iommu)
         return;
 
+    g_free(iommu->alias);
+
+    g_free(iommu->host_smmu);
+
     virDomainDeviceInfoClear(&iommu->info);
     g_free(iommu);
 }
@@ -4114,7 +4118,8 @@ void virDomainDefFree(virDomainDef *def)
         virDomainCryptoDefFree(def->cryptos[i]);
     g_free(def->cryptos);
 
-    virDomainIOMMUDefFree(def->iommu);
+    for (i = 0; i < def->niommus; i++)
+        virDomainIOMMUDefFree(def->iommu[i]);
 
     virDomainPstoreDefFree(def->pstore);
 
@@ -14299,6 +14304,7 @@ virDomainIOMMUDefParseXML(virDomainXMLOption *xmlopt,
 {
     VIR_XPATH_NODE_AUTORESTORE(ctxt)
     xmlNodePtr driver;
+    size_t len;
     g_autoptr(virDomainIOMMUDef) iommu = NULL;
 
     ctxt->node = node;
@@ -14334,6 +14340,17 @@ virDomainIOMMUDefParseXML(virDomainXMLOption *xmlopt,
                                      &iommu->dma_translation) < 0)
             return NULL;
     }
+
+    len = strlen(virXPathString("string(./alias)", ctxt)) + 1;
+    VIR_REALLOC_N(def->alias, len);
+    if (def->alias)
+        virStrcpy(def->alias, virXPathString("string(./alias)", ctxt), len);
+
+    len = strlen(virXPathString("string(./host_smmu)", ctxt)) + 1;
+    VIR_REALLOC_N(def->host_smmu, len);
+    if (def->host_smmu)
+        virStrcpy(def->host_smmu, virXPathString("string(./host_smmu)", ctxt), len);
+
 
     if (virDomainDeviceInfoParseXML(xmlopt, node, ctxt,
                                     &iommu->info, flags) < 0)
@@ -19376,6 +19393,18 @@ virDomainDefControllersParse(virDomainDef *def,
     return 0;
 }
 
+
+static int
+virDomainIOMMUMatch(virDomainIOMMUDef *first,
+                    virDomainIOMMUDef *second)
+{
+    if (first->alias == second->alias ||
+        first->host_smmu == second->host_smmu)
+        return 1;
+    return 0;
+}
+
+
 static virDomainDef *
 virDomainDefParseXML(xmlXPathContextPtr ctxt,
                      virDomainXMLOption *xmlopt,
@@ -20022,19 +20051,19 @@ virDomainDefParseXML(xmlXPathContextPtr ctxt,
     }
     VIR_FREE(nodes);
 
+    /* analysis of iommu devices */
     if ((n = virXPathNodeSet("./devices/iommu", ctxt, &nodes)) < 0)
         return NULL;
+    if (n)
+        def->iommu = g_new0(virDomainIOMMUDef *, n);
 
-    if (n > 1) {
-        virReportError(VIR_ERR_XML_ERROR, "%s",
-                       _("only a single IOMMU device is supported"));
-        return NULL;
-    }
-
-    if (n > 0) {
-        if (!(def->iommu = virDomainIOMMUDefParseXML(xmlopt, nodes[0],
-                                                     ctxt, flags)))
+    for (i = 0; i < n; i++) {
+        virDomainIOMMUDef *iommu = virDomainIOMMUDefParseXML(xmlopt, nodes[i],
+                                                             ctxt, flags);
+        if (!iommu)
             return NULL;
+
+        def->iommu[def->niommus++] = iommu;
     }
     VIR_FREE(nodes);
 
@@ -21952,6 +21981,20 @@ virDomainIOMMUDefCheckABIStability(virDomainIOMMUDef *src,
                        virTristateSwitchTypeToString(src->dma_translation));
         return false;
     }
+    if (src->alias != dst->alias) {
+        virReportError(VIR_ERR_CONFIG_UNSUPPORTED,
+                       _("Target domain IOMMU device alias '%1$s' does not match source '%2$s'"),
+                       virTristateSwitchTypeToString(dst->alias),
+                       virTristateSwitchTypeToString(src->alias));
+        return false;
+    }
+    if (src->host_smmu != dst->host_smmu) {
+        virReportError(VIR_ERR_CONFIG_UNSUPPORTED,
+                       _("Target domain IOMMU device host SMMU ID '%1$s' does not match source '%2$s'"),
+                       virTristateSwitchTypeToString(dst->host_smmu),
+                       virTristateSwitchTypeToString(src->host_smmu));
+        return false;
+    }
 
     return virDomainDeviceInfoCheckABIStability(&src->info, &dst->info);
 }
@@ -22445,15 +22488,17 @@ virDomainDefCheckABIStabilityFlags(virDomainDef *src,
             goto error;
     }
 
-    if (!!src->iommu != !!dst->iommu) {
+    if (src->niommus != dst->niommus) {
         virReportError(VIR_ERR_CONFIG_UNSUPPORTED, "%s",
-                       _("Target domain IOMMU device count does not match source"));
+                       _("Target domain IOMMU device count %1$zu does not match source $2$zu"),
+                       dst->niommus, src->niommus);
         goto error;
     }
 
-    if (src->iommu &&
-        !virDomainIOMMUDefCheckABIStability(src->iommu, dst->iommu))
-        goto error;
+    for (i = 0; i < src->niommus; i++) {
+        if (!virDomainIOMMUDefCheckABIStability(src->iommu[i], dst->iommu[i]))
+            goto error;
+    }
 
     if (!!src->vsock != !!dst->vsock) {
         virReportError(VIR_ERR_CONFIG_UNSUPPORTED, "%s",
@@ -28182,6 +28227,12 @@ virDomainIOMMUDefFormat(virBuffer *buf,
 
     virXMLFormatElement(&childBuf, "driver", &driverAttrBuf, NULL);
 
+    if (iommu->alias)
+        virBufferAsprintf(&childBuf, "<alias>%s</alias>\n", iommu->alias);
+
+    if (iommu->host_smmu)
+        virBufferAsprintf(&childBuf, "<host_smmu>%s</host_smmu>\n", iommu->host_smmu);
+
     virDomainDeviceInfoFormat(&childBuf, &iommu->info, 0);
 
     virBufferAsprintf(&attrBuf, " model='%s'",
@@ -29212,8 +29263,9 @@ virDomainDefFormatInternalSetRootName(virDomainDef *def,
     for (n = 0; n < def->ncryptos; n++) {
         virDomainCryptoDefFormat(buf, def->cryptos[n], flags);
     }
-    if (def->iommu)
-        virDomainIOMMUDefFormat(buf, def->iommu);
+
+    for (n = 0; n < def->niommus; n++)
+        virDomainIOMMUDefFormat(buf, def->iommu[n]);
 
     if (def->vsock)
         virDomainVsockDefFormat(buf, def->vsock);

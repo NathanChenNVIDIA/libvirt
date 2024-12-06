@@ -3017,6 +3017,8 @@ struct _virDomainIOMMUDef {
     virTristateSwitch eim;
     virTristateSwitch iotlb;
     unsigned int aw_bits;
+    char * alias;
+    char * host_smmu;
     virDomainDeviceInfo info;
     virTristateSwitch dma_translation;
 };
@@ -3259,6 +3261,9 @@ struct _virDomainDef {
     size_t nwatchdogs;
     virDomainWatchdogDef **watchdogs;
 
+    size_t niommus;
+    virDomainIOMMUDef **iommu;
+
     /* At maximum 2 TPMs on the domain if a TPM Proxy is present. */
     size_t ntpms;
     virDomainTPMDef **tpms;
@@ -3268,7 +3273,6 @@ struct _virDomainDef {
     virDomainNVRAMDef *nvram;
     virCPUDef *cpu;
     virDomainRedirFilterDef *redirfilter;
-    virDomainIOMMUDef *iommu;
     virDomainVsockDef *vsock;
     virDomainPstoreDef *pstore;
 

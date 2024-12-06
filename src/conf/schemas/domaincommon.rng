@@ -6232,10 +6232,13 @@
           <ref name="acpi"/>
         </optional>
         <optional>
-          <ref name="address"/>
+          <ref name="alias"/>
         </optional>
         <optional>
-          <ref name="alias"/>
+          <ref name="host_smmu"/>
+        </optional>
+        <optional>
+          <ref name="address"/>
         </optional>
       </interleave>
     </element>
@@ -6868,9 +6871,9 @@
         <zeroOrMore>
           <ref name="panic"/>
         </zeroOrMore>
-        <optional>
+        <zeroOrMore>
           <ref name="iommu"/>
-        </optional>
+        </zeroOrMore>
         <optional>
           <ref name="vsock"/>
         </optional>

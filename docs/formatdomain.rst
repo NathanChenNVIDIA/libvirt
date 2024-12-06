@@ -9087,6 +9087,18 @@ Example:
       example to efficiently enable more than 255 vCPUs.
       :since:`Since 10.7.0` (QEMU/KVM only)
 
+   ``alias``
+     The ``alias`` attribute is an identifier for the guest SMMU node. This enables
+     explicit pairing of host to guest SMMU identifiers to ensure the implications
+     of such a pairing with respect to NUMA pinning are clear.
+
+   ``host_smmu``
+      The ``host_smmu`` attribute is an identifier for which host SMMU node to
+      associate with a guest SMMU node represented by the smmuv3Accel IOMMU model.
+      This enables specifying a PCIe topology that routes passthrough devices with
+      different host SMMU associations to different pcie-expander-bus controllers,
+      allowing the device-to-SMMU association to match between the host and guest.
+
 The ``virtio`` IOMMU devices can further have ``address`` element as described
 in `Device addresses`_ (address has to by type of ``pci``).
 
