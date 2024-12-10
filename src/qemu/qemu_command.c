@@ -976,6 +976,7 @@ qemuBuildVirtioDevGetConfigDev(const virDomainDeviceDef *device,
         case VIR_DOMAIN_DEVICE_AUDIO:
         case VIR_DOMAIN_DEVICE_PSTORE:
         case VIR_DOMAIN_DEVICE_NESTED_SMMUV3:
+        case VIR_DOMAIN_DEVICE_IOMMUFD:
         case VIR_DOMAIN_DEVICE_LAST:
         default:
             break;
@@ -5011,6 +5012,29 @@ qemuBuildHostdevSCSICommandLine(virCommand *cmd,
 
     if (qemuBuildDeviceCommandlineFromJSON(cmd, devprops, def, qemuCaps) < 0)
         return -1;
+
+    return 0;
+}
+
+
+static int
+qemuBuildIommufdCommandLine(virCommand *cmd,
+                            const virDomainDef *def,
+                            virQEMUCaps *qemuCaps)
+{
+    g_autoptr(virJSONValue) props = NULL;
+    size_t i;
+
+    for (i = 0; i < def->niommufds; i++) {
+        if (qemuMonitorCreateObjectProps(&props, "iommufd",
+                                         def->iommufds[i]->id,
+                                         "S:fd", def->iommufds[i]->fd,
+                                         NULL) < 0)
+            return -1;
+
+        if (qemuBuildObjectCommandlineFromJSON(cmd, props, qemuCaps) < 0)
+            return -1;
+    }
 
     return 0;
 }
@@ -10608,6 +10632,9 @@ qemuBuildCommandLine(virDomainObj *vm,
         return NULL;
 
     if (qemuBuildRedirdevCommandLine(cmd, def, qemuCaps) < 0)
+        return NULL;
+
+    if (qemuBuildIommufdCommandLine(cmd, def, qemuCaps) < 0)
         return NULL;
 
     if (qemuBuildHostdevCommandLine(cmd, def, qemuCaps) < 0)

@@ -5471,6 +5471,7 @@ qemuValidateDomainDeviceDef(const virDomainDeviceDef *dev,
         return qemuValidateDomainDeviceDefPstore(dev->data.pstore, def, qemuCaps);
 
     case VIR_DOMAIN_DEVICE_NESTED_SMMUV3:
+    case VIR_DOMAIN_DEVICE_IOMMUFD:
     case VIR_DOMAIN_DEVICE_LEASE:
     case VIR_DOMAIN_DEVICE_PANIC:
     case VIR_DOMAIN_DEVICE_NONE:

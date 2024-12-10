@@ -6374,6 +6374,21 @@
     </element>
   </define>
 
+  <define name="iommufd">
+    <element name="iommufd">
+      <interleave>
+        <element name="id">
+          <text/>
+        </element>
+        <optional>
+          <element name="fd">
+            <text/>
+          </element>
+        </optional>
+      </interleave>
+    </element>
+  </define>
+
   <define name="hostdev">
     <element name="hostdev">
       <interleave>
@@ -6824,6 +6839,7 @@
             <ref name="memorydev"/>
             <ref name="crypto"/>
             <ref name="nestedSmmuv3"/>
+            <ref name="iommufd"/>
           </choice>
         </zeroOrMore>
         <zeroOrMore>
