@@ -383,6 +383,8 @@ struct _virDomainHostdevDef {
     bool missing;
     bool readonly;
     bool shareable;
+    char *iommufdId;
+    char *iommufdFd;
     virTristateBool writeFiltering;
     union {
         virDomainHostdevSubsys subsys;
