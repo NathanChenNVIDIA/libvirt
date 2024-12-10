@@ -2329,6 +2329,16 @@ virDomainNestedSmmuv3DefValidate(const virDomainNestedSmmuv3Def *nestedsmmuv3)
 }
 
 
+static int
+virDomainIommufdDefValidate(const virDomainIommufdDef *iommufd)
+{
+    if (iommufd->id == '\0') {
+        virReportError(VIR_ERR_INTERNAL_ERROR, "%s",
+                       _("iommufd must have an associated id"));
+    }
+}
+
+
 /**
  * virDomainMemoryGetMappedSize:
  * @mem: memory device definition
@@ -3251,6 +3261,9 @@ virDomainDeviceDefValidateInternal(const virDomainDeviceDef *dev,
 
     case VIR_DOMAIN_DEVICE_NESTED_SMMUV3:
         return virDomainNestedSmmuv3DefValidate(dev->data.nestedsmmuv3);
+
+    case VIR_DOMAIN_DEVICE_IOMMUFD:
+        return virDomainIommufdDefValidate(dev->data.iommufd);
 
     case VIR_DOMAIN_DEVICE_LEASE:
     case VIR_DOMAIN_DEVICE_WATCHDOG:

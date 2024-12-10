@@ -89,6 +89,7 @@ typedef enum {
     VIR_DOMAIN_DEVICE_CRYPTO,
     VIR_DOMAIN_DEVICE_PSTORE,
     VIR_DOMAIN_DEVICE_NESTED_SMMUV3,
+    VIR_DOMAIN_DEVICE_IOMMUFD,
 
     VIR_DOMAIN_DEVICE_LAST
 } virDomainDeviceType;
@@ -124,6 +125,7 @@ struct _virDomainDeviceDef {
         virDomainCryptoDef *crypto;
         virDomainPstoreDef *pstore;
         virDomainNestedSmmuv3Def *nestedsmmuv3;
+        virDomainIommufdDef *iommufd;
     } data;
 };
 
@@ -354,6 +356,11 @@ typedef enum {
 
     VIR_DOMAIN_STARTUP_POLICY_LAST
 } virDomainStartupPolicy;
+
+struct _virDomainIommufdDef {
+    char *id;
+    char *fd;
+};
 
 struct _virDomainNestedSmmuv3Def {
     char *name;
@@ -3207,6 +3214,9 @@ struct _virDomainDef {
     size_t nnestedsmmus;
     virDomainNestedSmmuv3Def **nestedsmmus;
 
+    size_t niommufds;
+    virDomainIommufdDef **iommufds;
+
     /* Only 1 */
     virDomainMemballoonDef *memballoon;
     virDomainNVRAMDef *nvram;
@@ -3687,6 +3697,8 @@ virDomainVideoDef *virDomainVideoDefNew(virDomainXMLOption *xmlopt);
 void virDomainVideoDefFree(virDomainVideoDef *def);
 G_DEFINE_AUTOPTR_CLEANUP_FUNC(virDomainVideoDef, virDomainVideoDefFree);
 void virDomainVideoDefClear(virDomainVideoDef *def);
+virDomainIommufdDef *virDomainIommufdDefNew(void);
+void virDomainIommufdDefFree(virDomainIommufdDef *def);
 virDomainNestedSmmuv3Def *virDomainNestedSmmuv3DefNew(void);
 void virDomainNestedSmmuv3DefFree(virDomainNestedSmmuv3Def *def);
 virDomainHostdevDef *virDomainHostdevDefNew(void);

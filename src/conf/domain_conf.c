@@ -343,6 +343,7 @@ VIR_ENUM_IMPL(virDomainDevice,
               "crypto",
               "pstore",
               "nestedSmmuv3",
+              "iommufd",
 );
 
 VIR_ENUM_IMPL(virDomainDiskDevice,
@@ -3451,6 +3452,17 @@ virDomainHostdevDefNew(void)
 }
 
 
+virDomainIommufdDef *
+virDomainIommufdDefNew(void)
+{
+    virDomainIommufdDef *def;
+
+    def = g_new0(virDomainIommufdDef, 1);
+
+    return def;
+}
+
+
 virDomainNestedSmmuv3Def *
 virDomainNestedSmmuv3DefNew(void)
 {
@@ -3522,6 +3534,18 @@ void virDomainHostdevDefFree(virDomainHostdevDef *def)
      */
     if (!def->parentnet)
         g_free(def);
+}
+
+void virDomainIommufdDefFree(virDomainIommufdDef *def)
+{
+    if (!def)
+        return;
+
+    g_free(def->id);
+
+    g_free(def->fd);
+
+    g_free(def);
 }
 
 void virDomainNestedSmmuv3DefFree(virDomainNestedSmmuv3Def *def)
@@ -3700,6 +3724,9 @@ void virDomainDeviceDefFree(virDomainDeviceDef *def)
         break;
     case VIR_DOMAIN_DEVICE_NESTED_SMMUV3:
         virDomainNestedSmmuv3DefFree(def->data.nestedsmmuv3);
+        break;
+    case VIR_DOMAIN_DEVICE_IOMMUFD:
+        virDomainNestedIommufdDefFree(def->data.iommufd);
         break;
     case VIR_DOMAIN_DEVICE_LAST:
     case VIR_DOMAIN_DEVICE_NONE:
@@ -4634,6 +4661,7 @@ virDomainDeviceGetInfo(const virDomainDeviceDef *device)
     case VIR_DOMAIN_DEVICE_LEASE:
     case VIR_DOMAIN_DEVICE_GRAPHICS:
     case VIR_DOMAIN_DEVICE_AUDIO:
+    case VIR_DOMAIN_DEVICE_IOMMUFD:
     case VIR_DOMAIN_DEVICE_LAST:
     case VIR_DOMAIN_DEVICE_NONE:
         break;
@@ -4739,6 +4767,9 @@ virDomainDeviceSetData(virDomainDeviceDef *device,
         break;
     case VIR_DOMAIN_DEVICE_NESTED_SMMUV3:
         device->data.nestedsmmuv3 = devicedata;
+        break;
+    case VIR_DOMAIN_DEVICE_IOMMUFD:
+        device->data.iommufd = devicedata;
         break;
     case VIR_DOMAIN_DEVICE_NONE:
     case VIR_DOMAIN_DEVICE_LAST:
@@ -5033,6 +5064,7 @@ virDomainDeviceInfoIterateFlags(virDomainDef *def,
     case VIR_DOMAIN_DEVICE_CRYPTO:
     case VIR_DOMAIN_DEVICE_PSTORE:
     case VIR_DOMAIN_DEVICE_NESTED_SMMUV3:
+    case VIR_DOMAIN_DEVICE_IOMMUFD:
         break;
     }
 #endif
@@ -13408,6 +13440,40 @@ virDomainHostdevDefParseXML(virDomainXMLOption *xmlopt,
 }
 
 
+static virDomainIommufdDef *
+virDomainIommufdDefParseXML(virDomainXMLOption *xmlopt,
+                            xmlNodePtr node,
+                            xmlXPathContextPtr ctxt,
+                            unsigned int flags)
+{
+    virDomainIommufdDef *def;
+    size_t idLength, fdLength;
+    VIR_XPATH_NODE_AUTORESTORE(ctxt)
+
+    ctxt->node = node;
+
+    if (!(def = virDomainIommufdDefNew()))
+        goto error;
+
+    idLength = strlen(virXPathString("string(./id)", ctxt)) + 1;
+    VIR_REALLOC_N(def->id, idLength);
+    if (!def->id)
+        goto error;
+    virStrcpy(def->id, virXPathString(("string(./id)"), ctxt), idLength);
+
+    fdLength = strlen(virXPathString("string(./fd)", ctxt)) + 1;
+    VIR_REALLOC_N(def->fd, fdLength);
+    if (!def->fd)
+        goto error;
+    virStrcpy(def->fd, virXPathString(("string(./fd)"), ctxt), fdLength);
+
+    return def;
+error:
+    virDomainIommufdDefFree(def);
+    return NULL;
+}
+
+
 static virDomainNestedSmmuv3Def *
 virDomainNestedSmmuv3DefParseXML(virDomainXMLOption *xmlopt,
                                  xmlNodePtr node,
@@ -14446,6 +14512,12 @@ virDomainDeviceDefParse(const char *xmlStr,
     case VIR_DOMAIN_DEVICE_NESTED_SMMUV3:
         if (!(dev->data.nestedsmmuv3 = virDomainNestedSmmuv3DefParseXML(xmlopt, node,
                                                                         ctxt, flags))) {
+            return NULL;
+        }
+        break;
+    case VIR_DOMAIN_DEVICE_IOMMUFD:
+        if (!(dev->data.iommufd = virDomainIommufdDefParseXML(xmlopt, node,
+                                                              ctxt, flags))) {
             return NULL;
         }
         break;
@@ -19528,6 +19600,21 @@ virDomainDefParseXML(xmlXPathContextPtr ctxt,
 
     VIR_FREE(nodes);
 
+    /* analysis of the iommufds */
+    if ((n = virXPathNodeSet("./devices/iommufd", ctxt, &nodes)) < 0)
+        return NULL;
+    if (n > 0)
+        VIR_REALLOC_N(def->iommufds, def->niommufds + n);
+    for (i = 0; i < n; i++) {
+        virDomainIommufdDef *iommufd;
+        iommufd = virDomainIommufdDefParseXML(xmlopt, nodes[i], ctxt, flags);
+
+        if (!iommufd)
+            return NULL;
+        def->iommufds[def->niommufds++] = iommufd;
+    }
+    VIR_FREE(nodes);
+
     /* analysis of the nested SMMUs */
     if ((n = virXPathNodeSet("./devices/nestedSmmuv3", ctxt, &nodes)) < 0)
         return NULL;
@@ -20755,7 +20842,24 @@ virDomainHostdevDefCheckABIStability(virDomainHostdevDef *src,
         return false;
     }
 
+    if (!STRNEQ(src->iommufd, dst->iommufd))
+        return false;
+
     if (!virDomainDeviceInfoCheckABIStability(src->info, dst->info))
+        return false;
+
+    return true;
+}
+
+
+static bool
+virDomainIommufdDefCheckABIStability(virDomainIommufdDef *src,
+                                     virDomainIommufdDef *dst)
+{
+    if (STRNEQ(src->id, dst->id))
+        return false;
+
+    if (STRNEQ(src->fd, dst->fd))
         return false;
 
     return true;
@@ -22113,6 +22217,19 @@ virDomainDefCheckABIStabilityFlags(virDomainDef *src,
             goto error;
     }
 
+    if (src->niommufds != dst->niommufds) {
+        virReportError(VIR_ERR_CONFIG_UNSUPPORTED,
+                       _("Target domain iommufd count %1$zu does not match source %2$zu"),
+                       dst->niommufds, src->niommufds);
+        goto error;
+    }
+
+    for (i = 0; i < src->niommufds; i++) {
+        if (!virDomainIommufdDefCheckABIStability(src->iommufds[i],
+                                                  dist->iommufds[i])
+            goto error;
+    }
+
     if (src->nnestedsmmus != dst->nnestedsmmus) {
         virReportError(VIR_ERR_CONFIG_UNSUPPORTED,
                        _("Target domain nested SMMUs count %1$zu does not match source %2$zu"),
@@ -22296,6 +22413,7 @@ virDomainDefCheckABIStabilityFlags(virDomainDef *src,
     case VIR_DOMAIN_DEVICE_CRYPTO:
     case VIR_DOMAIN_DEVICE_PSTORE:
     case VIR_DOMAIN_DEVICE_NESTED_SMMUV3:
+    case VIR_DOMAIN_DEVICE_IOMMUFD:
         break;
     }
 #endif
@@ -26977,6 +27095,22 @@ virDomainHostdevDefFormat(virBuffer *buf,
 }
 
 static int
+virDomainIommufdDefFormat(virBuffer *bug,
+                          virDomainIommufdDef *def,
+                          unsigned int flags)
+{
+    virBufferAddLit(buf, "<iommufd>\n");
+    virBufferAdjustIndent(buf, 2);
+
+    virBufferAsprintf(buf, "<id>%s</id>\n", def->id);
+
+    virBufferAsprintf(buf, "<fd>%s</fd>\n", def->fd);
+
+    virBufferAdjustIndent(buf, -2);
+    virBufferAddLit(buf, "</iommufd>\n");
+}
+
+static int
 virDomainNestedSmmuv3DefFormat(virBuffer *buf,
                                virDomainNestedSmmuv3Def *def,
                                unsigned int flags)
@@ -28853,6 +28987,11 @@ virDomainDefFormatInternalSetRootName(virDomainDef *def,
         virDomainCryptoDefFormat(buf, def->cryptos[n], flags);
     }
 
+    for (n = 0; n < def->niommufds; n++) {
+        if (virDomainIommufdDefFormat(buf, def->iommufds[n], flags) < 0)
+            return -1;
+    }
+
     for (n = 0; n < def->nnestedsmmus; n++) {
         if (virDomainNestedSmmuv3DefFormat(buf, def->nestedsmmus[n], flags) < 0)
             return -1;
@@ -29028,6 +29167,7 @@ virDomainDeviceIsUSB(virDomainDeviceDef *dev,
     case VIR_DOMAIN_DEVICE_CRYPTO:
     case VIR_DOMAIN_DEVICE_PSTORE:
     case VIR_DOMAIN_DEVICE_NESTED_SMMUV3:
+    case VIR_DOMAIN_DEVICE_IOMMUFD:
     break;
     }
 
