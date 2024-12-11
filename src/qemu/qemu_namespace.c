@@ -677,6 +677,40 @@ qemuDomainSetupLaunchSecurity(virDomainObj *vm,
 
 
 static int
+qemuDomainSetupIommufd(virDomainObj *vm,
+                       GSList **paths)
+{
+    bool iommufdEnabled = false;
+    g_autoptr(DIR) dir = NULL;
+    struct dirent *dent;
+    g_autofree char *path = NULL;
+
+    if (vm->def->iommufds)
+        iommufdEnabled = true;
+
+    if (iommufdEnabled) {
+        if (virDirOpen(&dir, "/dev/vfio/devices") < 0) {
+            if (errno == ENOENT)
+                return 0;
+            return -1;
+        }
+        while (virDirRead(dir, &dent, "/dev/vfio/devices") > 0) {
+            if (STRPREFIX(dent->d_name, "vfio")) {
+                path = g_strdup_printf("/dev/vfio/devices/%s", dent->d_name);
+                *paths = g_slist_prepend(*paths, g_steal_pointer(&path));
+            }
+        }
+        path = NULL;
+        if (virFileExists("/dev/iommu"))
+            path = g_strdup("/dev/iommu");
+        if (path)
+            *paths = g_slist_prepend(*paths, g_steal_pointer(&path));
+    }
+    return 0;
+}
+
+
+static int
 qemuNamespaceMknodPaths(virDomainObj *vm,
                         GSList *paths,
                         bool *created);
@@ -697,6 +731,9 @@ qemuDomainBuildNamespace(virQEMUDriverConfig *cfg,
         return -1;
 
     if (qemuDomainSetupAllDisks(vm, &paths) < 0)
+        return -1;
+
+    if (qemuDomainSetupIommufd(vm, &paths) < 0)
         return -1;
 
     if (qemuDomainSetupAllHostdevs(vm, &paths) < 0)
