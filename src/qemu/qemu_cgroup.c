@@ -462,6 +462,47 @@ qemuTeardownInputCgroup(virDomainObj *vm,
 }
 
 
+int
+qemuSetupIommufdCgroup(virDomainObj *vm)
+{
+    qemuDomainObjPrivate *priv = vm->privateData;
+    g_autoptr(DIR) dir = NULL;
+    struct dirent *dent;
+    g_autofree char *path = NULL;
+
+    if (vm->def->iommu && vm->def->niommus > 0 &&
+        /* Check if iommufd is enabled */
+        vm->def->iommu[0]->iommufd) {
+        if (!virCgroupHasController(priv->cgroup, VIR_CGROUP_CONTROLLER_DEVICES))
+            return 0;
+        if (virDirOpen(&dir, "/dev/vfio/devices") < 0) {
+            if (errno == ENOENT)
+                return 0;
+            return -1;
+        }
+        while (virDirRead(dir, &dent, "/dev/vfio/devices") > 0) {
+            if (STRPREFIX(dent->d_name, "vfio")) {
+                path = g_strdup_printf("/dev/vfio/devices/%s", dent->d_name);
+            }
+            if (path &&
+                qemuCgroupAllowDevicePath(vm, path,
+                                          VIR_CGROUP_DEVICE_RW, false) < 0) {
+                return -1;
+            }
+            path = NULL;
+        }
+        if (virFileExists("/dev/iommu"))
+            path = g_strdup("/dev/iommu");
+        if (path &&
+            qemuCgroupAllowDevicePath(vm, path,
+                                      VIR_CGROUP_DEVICE_RW, false) < 0) {
+            return -1;
+        }
+    }
+    return 0;
+}
+
+
 /**
  * qemuSetupHostdevCgroup:
  * vm: domain object
@@ -827,6 +868,12 @@ qemuSetupDevicesCgroup(virDomainObj *vm)
         /* This may allow /dev/vfio/vfio multiple times, but that
          * is not a problem. Kernel will have only one record. */
         if (qemuSetupHostdevCgroup(vm, vm->def->hostdevs[i]) < 0)
+            return -1;
+    }
+
+    if (vm->def->iommu && vm->def->niommus > 0 &&
+        vm->def->iommu[0]->iommufd) {
+        if (qemuSetupIommufdCgroup(vm) < 0)
             return -1;
     }
 
