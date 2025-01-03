@@ -140,6 +140,8 @@ typedef struct _virDomainHubDef virDomainHubDef;
 
 typedef struct _virDomainHugePage virDomainHugePage;
 
+typedef struct _virDomainIommufdDef virDomainIommufdDef;
+
 typedef struct _virDomainIOMMUDef virDomainIOMMUDef;
 
 typedef struct _virDomainIOThreadIDDef virDomainIOThreadIDDef;
