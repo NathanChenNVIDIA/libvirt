@@ -2816,6 +2816,9 @@ virDomainIOMMUDefFree(virDomainIOMMUDef *iommu)
     if (!iommu)
         return;
 
+    if (iommu->iommufd)
+        virDomainIommufdDefFree(iommu->iommufd);
+
     virDomainDeviceInfoClear(&iommu->info);
     g_free(iommu);
 }
@@ -14368,6 +14371,57 @@ virDomainMemoryDefParseXML(virDomainXMLOption *xmlopt,
 }
 
 
+void virDomainIommufdDefFree(virDomainIommufdDef *def)
+{
+    if (!def)
+        return;
+
+    g_free(def->id);
+
+    g_free(def->fd);
+
+    g_free(def);
+}
+
+
+static virDomainIommufdDef *
+virDomainIommufdParseXML(xmlNodePtr node,
+                         xmlXPathContextPtr ctxt)
+{
+    virDomainIommufdDef *def;
+    size_t idLength, fdLength;
+    g_autofree char *iommufdId = NULL;
+    g_autofree char *iommufdFd = NULL;
+    VIR_XPATH_NODE_AUTORESTORE(ctxt)
+
+    ctxt->node = node;
+
+    def = g_new0(virDomainIommufdDef, 1);
+
+    if (!(iommufdId = virXPathString("string(./id)", ctxt)))
+        goto error;
+
+    idLength = strlen(iommufdId) + 1;
+    VIR_REALLOC_N(def->id, idLength);
+    if (!def->id)
+        goto error;
+    virStrcpy(def->id, virXPathString(("string(./id)"), ctxt), idLength);
+
+    iommufdFd = virXPathString("string(./fd)", ctxt);
+    if (iommufdFd) {
+        fdLength = strlen(virXPathString("string(./fd)", ctxt)) + 1;
+        VIR_REALLOC_N(def->fd, fdLength);
+        if (!def->fd)
+            goto error;
+        virStrcpy(def->fd, virXPathString(("string(./fd)"), ctxt), fdLength);
+    }
+    return def;
+ error:
+    virDomainIommufdDefFree(def);
+    return NULL;
+}
+
+
 static virDomainIOMMUDef *
 virDomainIOMMUDefParseXML(virDomainXMLOption *xmlopt,
                           xmlNodePtr node,
@@ -14375,7 +14429,7 @@ virDomainIOMMUDefParseXML(virDomainXMLOption *xmlopt,
                           unsigned int flags)
 {
     VIR_XPATH_NODE_AUTORESTORE(ctxt)
-    xmlNodePtr driver;
+    xmlNodePtr driver, iommufd;
     g_autoptr(virDomainIOMMUDef) iommu = NULL;
 
     ctxt->node = node;
@@ -14409,6 +14463,11 @@ virDomainIOMMUDefParseXML(virDomainXMLOption *xmlopt,
 
         if (virXMLPropTristateSwitch(driver, "dma_translation", VIR_XML_PROP_NONE,
                                      &iommu->dma_translation) < 0)
+            return NULL;
+    }
+
+    if ((iommufd = virXPathNode("./iommufd", ctxt))) {
+        if (!(iommu->iommufd = virDomainIommufdParseXML(iommufd, ctxt)))
             return NULL;
     }
 
@@ -22064,6 +22123,28 @@ virDomainIOMMUDefCheckABIStability(virDomainIOMMUDef *src,
                        virTristateSwitchTypeToString(src->dma_translation));
         return false;
     }
+    if (src->iommufd != dst->iommufd) {
+        if (src->iommufd && dst->iommufd) {
+            if (STRNEQ(src->iommufd->id, dst->iommufd->id)) {
+                virReportError(VIR_ERR_CONFIG_UNSUPPORTED,
+                               _("Target domain IOMMU device iommufd id '%1$s' does not match source '%2$s'"),
+                               dst->iommufd->id,
+                               src->iommufd->id);
+                return false;
+            }
+            if (STRNEQ(src->iommufd->fd, dst->iommufd->fd)) {
+                virReportError(VIR_ERR_CONFIG_UNSUPPORTED,
+                               _("Target domain IOMMU device iommufd fd '%1$s' does not match source '%2$s'"),
+                               dst->iommufd->fd,
+                               src->iommufd->fd);
+                return false;
+            }
+        } else {
+            virReportError(VIR_ERR_INTERNAL_ERROR, "%s",
+                       _("Target domain IOMMU device iommufd does not match source"));
+            return false;
+        }
+    }
 
     return virDomainDeviceInfoCheckABIStability(&src->info, &dst->info);
 }
@@ -28361,6 +28442,16 @@ virDomainIOMMUDefFormat(virBuffer *buf,
     }
 
     virXMLFormatElement(&childBuf, "driver", &driverAttrBuf, NULL);
+
+    if (iommu->iommufd) {
+        virBufferAddLit(&childBuf, "<iommufd>\n");
+        virBufferAdjustIndent(&childBuf, 2);
+        virBufferAsprintf(&childBuf, "<id>%s</id>\n", iommu->iommufd->id);
+        if (iommu->iommufd->fd)
+            virBufferAsprintf(&childBuf, "<fd>%s</fd>\n", iommu->iommufd->fd);
+        virBufferAdjustIndent(&childBuf, -2);
+        virBufferAddLit(&childBuf, "</iommufd>\n");
+    }
 
     virDomainDeviceInfoFormat(&childBuf, &iommu->info, 0);
 
