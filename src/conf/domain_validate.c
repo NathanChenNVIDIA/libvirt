@@ -1401,6 +1401,20 @@ virDomainDefHostdevValidate(const virDomainDef *def)
                 ramfbEnabled = true;
             }
         }
+
+        /* Check for unsupported conditions:
+         * - A hostdev's iommufd fd number is defined but its iommufd id
+         * number is not
+         * - An iommu device is defined, iommufd is not defined,
+         * but a hostdev's iommufd id or fd are defined */
+        if ((!dev->iommufdId && dev->iommufdFd) ||
+            (def->iommu && def->niommus > 0 &&
+             !def->iommu[0]->iommufd &&
+             (dev->iommufdId || dev->iommufdFd))) {
+            virReportError(VIR_ERR_CONFIG_UNSUPPORTED, "%s",
+                           _("Unsupported hostdev iommufd configuration"));
+            return -1;
+        }
     }
 
     return 0;
