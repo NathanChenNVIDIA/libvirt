@@ -13624,6 +13624,19 @@ virDomainVideoDefParseXML(virDomainXMLOption *xmlopt,
     return g_steal_pointer(&def);
 }
 
+static void
+virDomainHostdevDefIommufdParseXML(xmlXPathContextPtr ctxt,
+                                   char** iommufdId,
+                                   char** iommufdFd)
+{
+    g_autofree char *iommufdIdtmp = virXPathString("string(./iommufdId)", ctxt);
+    g_autofree char *iommufdFdtmp = virXPathString("string(./iommufdFd)", ctxt);
+    if (iommufdIdtmp)
+        *iommufdId = g_steal_pointer(&iommufdIdtmp);
+    if (iommufdFdtmp)
+        *iommufdFd = g_steal_pointer(&iommufdFdtmp);
+}
+
 static virDomainHostdevDef *
 virDomainHostdevDefParseXML(virDomainXMLOption *xmlopt,
                             xmlNodePtr node,
@@ -13697,6 +13710,8 @@ virDomainHostdevDefParseXML(virDomainXMLOption *xmlopt,
 
     if (virDomainNetTeamingInfoParseXML(ctxt, &def->teaming) < 0)
         goto error;
+
+    virDomainHostdevDefIommufdParseXML(ctxt, &def->iommufdId, &def->iommufdFd);
 
     return def;
 
@@ -21149,6 +21164,16 @@ virDomainHostdevDefCheckABIStability(virDomainHostdevDef *src,
         }
     }
 
+    if (src->iommufdId && dst->iommufdId) {
+        if (STRNEQ(src->iommufdId, dst->iommufdId))
+            return false;
+    }
+
+    if (src->iommufdFd && dst->iommufdFd) {
+        if (STRNEQ(src->iommufdFd, dst->iommufdFd))
+            return false;
+    }
+
     if (!virDomainDeviceInfoCheckABIStability(src->info, dst->info))
         return false;
 
@@ -27529,6 +27554,12 @@ virDomainHostdevDefFormat(virBuffer *buf,
         virBufferAddLit(buf, "<readonly/>\n");
     if (def->shareable)
         virBufferAddLit(buf, "<shareable/>\n");
+
+    if (def->iommufdId) {
+        virBufferAsprintf(buf, "<iommufdId>%s</iommufdId>\n", def->iommufdId);
+        if (def->iommufdFd)
+            virBufferAsprintf(buf, "<iommufdFd>%s</iommufdFd>\n", def->iommufdFd);
+    }
 
     virDomainDeviceInfoFormat(buf, def->info, flags | VIR_DOMAIN_DEF_FORMAT_ALLOW_BOOT
                                                     | VIR_DOMAIN_DEF_FORMAT_ALLOW_ROM);
