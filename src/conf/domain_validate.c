@@ -3063,6 +3063,13 @@ virDomainIOMMUDefValidate(const virDomainIOMMUDef *iommu)
         break;
     }
 
+    if (iommu->iommufd) {
+        if (!iommu->iommufd->id) {
+            virReportError(VIR_ERR_INTERNAL_ERROR, "%s",
+                           _("iommufd must have an associated id"));
+            return -1;
+        }
+    }
     return 0;
 }
 
