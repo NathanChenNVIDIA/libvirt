@@ -1338,6 +1338,14 @@ virDomainDefHostdevValidate(const virDomainDef *def)
                 ramfbEnabled = true;
             }
         }
+
+        if ((!dev->iommufdId && dev->iommufdFd) ||
+            (def->iommu && !def->iommu->iommufd &&
+             (dev->iommufdId || dev->iommufdFd))) {
+            virReportError(VIR_ERR_CONFIG_UNSUPPORTED, "%s",
+                           _("Unsupported hostdev iommufd configuration"));
+            return -1;
+        }
     }
 
     return 0;
