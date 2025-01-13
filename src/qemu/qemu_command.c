@@ -6950,6 +6950,9 @@ qemuBuildMachineCommandLine(virCommand *cmd,
             virReportEnumRangeError(virDomainIOMMUModel, def->iommu->model);
             return -1;
         }
+
+        if (def->iommu->cmdqv)
+            virBufferAddLit(&buf, ",cmdqv=on");
     }
 
     if (qemuAppendDomainMemoryMachineParams(&buf, cfg, def, qemuCaps) < 0)
