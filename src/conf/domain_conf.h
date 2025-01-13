@@ -2971,6 +2971,7 @@ struct _virDomainIOMMUDef {
     virTristateSwitch iotlb;
     unsigned int aw_bits;
     virDomainIommufdDef *iommufd;
+    bool cmdqv;
 
     virDomainDeviceInfo info;
     virTristateSwitch dma_translation;

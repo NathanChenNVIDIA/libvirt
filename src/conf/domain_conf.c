@@ -14149,7 +14149,7 @@ virDomainIOMMUDefParseXML(virDomainXMLOption *xmlopt,
                           unsigned int flags)
 {
     VIR_XPATH_NODE_AUTORESTORE(ctxt)
-    xmlNodePtr driver, iommufd;
+    xmlNodePtr driver, iommufd, cmdqv;
     g_autoptr(virDomainIOMMUDef) iommu = NULL;
 
     ctxt->node = node;
@@ -14189,6 +14189,13 @@ virDomainIOMMUDefParseXML(virDomainXMLOption *xmlopt,
     if ((iommufd = virXPathNode("./iommufd", ctxt))) {
         if (!(iommu->iommufd = virDomainIommufdParseXML(iommufd, ctxt)))
             return NULL;
+    }
+
+    if ((cmdqv = virXPathNode("./cmdqv", ctxt))) {
+        if (STREQ("true", virXPathString("string(./cmdqv)", ctxt)))
+            iommu->cmdqv = true;
+        else
+            iommu->cmdqv = false;
     }
 
     if (virDomainDeviceInfoParseXML(xmlopt, node, ctxt,
@@ -21862,6 +21869,13 @@ virDomainIOMMUDefCheckABIStability(virDomainIOMMUDef *src,
             return false;
         }
     }
+    if (src->cmdqv != dst->cmdqv) {
+        virReportError(VIR_ERR_CONFIG_UNSUPPORTED,
+                       _("Target domain IOMMU CMDQv setting '%1$s' does not match source '%2$s'"),
+                       dst->cmdqv ? "true" : "false",
+                       src->cmdqv ? "true" : "false");
+        return false;
+    }
 
     return virDomainDeviceInfoCheckABIStability(&src->info, &dst->info);
 }
@@ -27998,6 +28012,10 @@ virDomainIOMMUDefFormat(virBuffer *buf,
             virBufferAsprintf(&childBuf, "<fd>%s</fd>\n", iommu->iommufd->fd);
         virBufferAdjustIndent(&childBuf, -2);
         virBufferAddLit(&childBuf, "</iommufd>\n");
+    }
+
+    if (iommu->cmdqv) {
+        virBufferAddLit(&childBuf, "<cmdqv>true</cmdqv>\n");
     }
 
     virDomainDeviceInfoFormat(&childBuf, &iommu->info, 0);
