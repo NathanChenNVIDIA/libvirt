@@ -3137,6 +3137,7 @@ virDomainIOMMUDefValidate(const virDomainIOMMUDef *iommu)
             return -1;
         }
     }
+
     return 0;
 }
 
