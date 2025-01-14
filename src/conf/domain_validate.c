@@ -1863,6 +1863,13 @@ virDomainDefIOMMUValidate(const virDomainDef *def)
         return -1;
     }
 
+    if (def->iommu->cmdqv) {
+        if (def->mem.nhugepages < 1) {
+            virReportError(VIR_ERR_CONFIG_UNSUPPORTED, "%s",
+                           _("IOMMU cmdqv requires hugepages backing to be enabled for the VM"));
+        }
+    }
+
     return 0;
 }
 
@@ -3138,6 +3145,14 @@ virDomainIOMMUDefValidate(const virDomainIOMMUDef *iommu)
         }
     }
 
+    if (iommu->cmdqv) {
+        if (iommu->model != VIR_DOMAIN_IOMMU_MODEL_SMMUV3 &&
+            iommu->model != VIR_DOMAIN_IOMMU_MODEL_NESTED_SMMUV3) {
+            virReportError(VIR_ERR_XML_ERROR, "%s",
+                           _("iommu: cmdqv is only supported with iommu model smmuv3 or nested-smmuv3"));
+            return -1;
+        }
+    }
     return 0;
 }
 
