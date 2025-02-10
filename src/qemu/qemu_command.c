@@ -6163,6 +6163,19 @@ qemuBuildIOMMUCommandLine(virCommand *cmd,
     size_t i;
     g_autoptr(virJSONValue) props = NULL;
 
+    if (iommu->iommufd) {
+        if (qemuMonitorCreateObjectProps(&props, "iommufd",
+                                         def->iommu->iommufd->id,
+                                         "S:fd", def->iommu->iommufd->fd,
+                                         NULL) < 0)
+            return -1;
+
+        if (qemuBuildObjectCommandlineFromJSON(cmd, props, qemuCaps) < 0)
+            return -1;
+    }
+
+    props = NULL;
+
     for (i = 0; i < def->niommus; i++) {
         virDomainIOMMUDef iommu = def->iommu[i];
 

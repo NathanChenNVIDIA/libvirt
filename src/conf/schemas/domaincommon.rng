@@ -6235,6 +6235,23 @@
           <ref name="alias"/>
         </optional>
         <optional>
+          <element name="iommufd">
+            <interleave>
+              <element name="id">
+                <text/>
+              </element>
+              <optional>
+                <element name="fd">
+                  <text/>
+                </element>
+              </optional>
+            </interleave>
+          </element>
+        </optional>
+        <optional>
+          <ref name="address"/>
+        </optional>
+        <optional>
           <ref name="host_smmu"/>
         </optional>
         <optional>
