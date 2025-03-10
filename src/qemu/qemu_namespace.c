@@ -717,6 +717,23 @@ qemuDomainSetupIommufd(virDomainObj *vm,
     return 0;
 }
 
+static int
+qemuDomainSetupAcpiEgm(virDomainObj *vm,
+                       GSList **paths)
+{
+    virDomainAcpiEgmDef *egm = vm->def->egm;
+    g_autofree char *path = NULL;
+
+    if (!egm)
+        return 0;
+
+    path = g_strdup_printf("/dev/%s", egm->alias);
+
+    *paths = g_slist_prepend(*paths, g_steal_pointer(&path));
+
+    return 0;
+}
+
 
 static int
 qemuNamespaceMknodPaths(virDomainObj *vm,
@@ -772,6 +789,9 @@ qemuDomainBuildNamespace(virQEMUDriverConfig *cfg,
         return -1;
 
     if (qemuDomainSetupLaunchSecurity(vm, &paths) < 0)
+        return -1;
+
+    if (qemuDomainSetupAcpiEgm(vm, &paths) < 0)
         return -1;
 
     if (qemuNamespaceMknodPaths(vm, paths, NULL) < 0)
