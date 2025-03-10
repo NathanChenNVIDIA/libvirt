@@ -1011,6 +1011,7 @@ qemuBuildVirtioDevGetConfigDev(const virDomainDeviceDef *device,
         case VIR_DOMAIN_DEVICE_IOMMU:
         case VIR_DOMAIN_DEVICE_AUDIO:
         case VIR_DOMAIN_DEVICE_PSTORE:
+        case VIR_DOMAIN_DEVICE_EGM:
         case VIR_DOMAIN_DEVICE_LAST:
         default:
             break;
@@ -3451,6 +3452,8 @@ qemuBuildMemoryBackendProps(virJSONValue **backendProps,
         } else if (useHugepage) {
             if (qemuGetDomainHupageMemPath(priv->driver, def, pagesize, &memPath) < 0)
                 return -1;
+        } else if (def->egm) {
+            memPath = g_strdup_printf("/dev/%s", def->egm->alias);
         } else {
             /* We can have both pagesize and mem source. If that's the case,
              * prefer hugepages as those are more specific. */
@@ -10751,6 +10754,36 @@ qemuBuildPstoreCommandLine(virCommand *cmd,
     return 0;
 }
 
+static int
+qemuBuildAcpiEgmCommandLine(virCommand *cmd,
+                           virDomainAcpiEgmDef *egm,
+                           virQEMUCaps *qemuCaps)
+{
+    g_autoptr(virJSONValue) egmProps = NULL;
+
+    if (!virQEMUCapsGet(qemuCaps, QEMU_CAPS_DEVICE_ACPI_EGM_MEMORY)) {
+        virReportError(VIR_ERR_CONFIG_UNSUPPORTED, "%s",
+                      _("ACPI EGM memory device is not supported with this QEMU binary"));
+        return -1;
+    }
+
+    VIR_DEBUG("Creating ACPI EGM device: alias=%s, pciDev=%s, numaNode=%d",
+              egm->alias, egm->pciDev, egm->numaNode);
+
+    if (qemuMonitorCreateObjectProps(&egmProps,
+                                    "acpi-egm-memory",
+                                    egm->alias,
+                                    "s:pci-dev", egm->pciDev,
+                                    "u:node", egm->numaNode,
+                                    NULL) < 0) {
+        return -1;
+    }
+
+    if (qemuBuildObjectCommandlineFromJSON(cmd, egmProps) < 0)
+        return -1;
+
+    return 0;
+}
 
 static int
 qemuBuildAsyncTeardownCommandLine(virCommand *cmd,
@@ -11107,6 +11140,10 @@ qemuBuildCommandLine(virDomainObj *vm,
 
     if (def->pstore &&
         qemuBuildPstoreCommandLine(cmd, def, def->pstore, qemuCaps) < 0)
+        return NULL;
+
+    if (def->egm &&
+        qemuBuildAcpiEgmCommandLine(cmd, def->egm, qemuCaps) < 0)
         return NULL;
 
     if (qemuBuildAsyncTeardownCommandLine(cmd, def, qemuCaps) < 0)
