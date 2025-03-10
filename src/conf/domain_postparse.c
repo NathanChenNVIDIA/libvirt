@@ -85,6 +85,13 @@ virDomainDefPostParseMemory(virDomainDef *def,
         return -1;
     }
 
+    /* if we have a Grace EGM device, setup memory backing */
+    if (def->egm) {
+        def->mem.source = VIR_DOMAIN_MEMORY_SOURCE_FILE;
+        def->mem.access = VIR_DOMAIN_MEMORY_ACCESS_SHARED;
+        def->mem.allocation = VIR_DOMAIN_MEMORY_ALLOCATION_IMMEDIATE;
+    }
+
     return 0;
 }
 
@@ -760,6 +767,7 @@ virDomainDeviceDefPostParseCommon(virDomainDeviceDef *dev,
     case VIR_DOMAIN_DEVICE_AUDIO:
     case VIR_DOMAIN_DEVICE_CRYPTO:
     case VIR_DOMAIN_DEVICE_PSTORE:
+    case VIR_DOMAIN_DEVICE_EGM:
         ret = 0;
         break;
 
