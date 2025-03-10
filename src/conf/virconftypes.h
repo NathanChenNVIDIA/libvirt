@@ -270,6 +270,8 @@ typedef struct _virDomainCryptoDef virDomainCryptoDef;
 
 typedef struct _virDomainPstoreDef virDomainPstoreDef;
 
+typedef struct _virDomainAcpiEgmDef virDomainAcpiEgmDef;
+
 typedef struct _virDomainWatchdogDef virDomainWatchdogDef;
 
 typedef struct _virDomainXMLOption virDomainXMLOption;

@@ -3384,6 +3384,7 @@ virDomainDeviceDefValidateInternal(const virDomainDeviceDef *dev,
     case VIR_DOMAIN_DEVICE_PSTORE:
         return virDomainPstoreDefValidate(dev->data.pstore);
 
+    case VIR_DOMAIN_DEVICE_EGM:
     case VIR_DOMAIN_DEVICE_LEASE:
     case VIR_DOMAIN_DEVICE_WATCHDOG:
     case VIR_DOMAIN_DEVICE_HUB:
