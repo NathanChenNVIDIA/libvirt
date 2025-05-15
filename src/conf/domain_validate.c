@@ -1838,9 +1838,9 @@ virDomainDefCputuneValidate(const virDomainDef *def)
 static int
 virDomainDefIOMMUValidate(const virDomainDef *def)
 {
-    size_t i;
+    size_t i, j;
 
-    if (!def->iommu)
+    if (!def->iommu || def->niommus == 0)
          return 0;
 
     for (i = 0; i < def->niommus; i++) {
@@ -1849,6 +1849,39 @@ virDomainDefIOMMUValidate(const virDomainDef *def)
         if (def->niommus > 1 && iommu->model != VIR_DOMAIN_IOMMU_MODEL_SMMUV3_DEV) {
             virReportError(VIR_ERR_XML_ERROR, "%s",
                            _("IOMMU model smmuv3Dev must be specified for multiple IOMMU definitions"));
+        }
+
+        for (j = i + 1; j < def->niommus; j++) {
+            if (virDomainIOMMUDefEquals(iommu,
+                                    def->iommu[j])) {
+                virReportError(VIR_ERR_XML_ERROR, "%s",
+                               _("IOMMU already exists in the domain configuration"));
+                return -1;
+            }
+
+            if (iommu->iommufd && def->iommu[j]->iommufd) {
+                if (iommu->iommufd->id && def->iommu[j]->iommufd->id) {
+                    if (STRNEQ(iommu->iommufd->id, def->iommu[j]->iommufd->id)) {
+                        virReportError(VIR_ERR_XML_ERROR, "%s",
+                                       _("iommufd ID must be the same for multiple IOMMUs"));
+                        return -1;
+                    }
+                } else {
+                    virReportError(VIR_ERR_XML_ERROR, "%s",
+                                   _("iommufd ID must be specified"));
+                }
+                if (iommu->iommufd->fd && def->iommu[j]->iommufd->fd &&
+                    STRNEQ(iommu->iommufd->fd, def->iommu[j]->iommufd->fd)) {
+                    virReportError(VIR_ERR_XML_ERROR, "%s",
+                                   _("iommufd FD must be the same for multiple IOMMUs"));
+                    return -1;
+                }
+            } else if ((iommu->iommufd && !def->iommu[j]->iommufd) ||
+                       (!iommu->iommufd && def->iommu[j]->iommufd)) {
+                virReportError(VIR_ERR_XML_ERROR, "%s",
+                               _("The same iommufd configuration must be specified for multiple IOMMUs"));
+                return -1;
+            }
         }
 
         if (iommu->intremap == VIR_TRISTATE_SWITCH_ON &&
@@ -3115,6 +3148,13 @@ virDomainIOMMUDefValidate(const virDomainIOMMUDef *iommu)
         break;
     }
 
+    if (iommu->iommufd) {
+        if (!iommu->iommufd->id) {
+            virReportError(VIR_ERR_INTERNAL_ERROR, "%s",
+                           _("iommufd must have an associated id"));
+            return -1;
+        }
+    }
     return 0;
 }
 

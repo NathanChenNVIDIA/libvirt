@@ -2814,6 +2814,9 @@ virDomainIOMMUDefFree(virDomainIOMMUDef *iommu)
     if (!iommu)
         return;
 
+    if (iommu->iommufd)
+        virDomainIommufdDefFree(iommu->iommufd);
+
     virDomainDeviceInfoClear(&iommu->info);
     g_free(iommu);
 }
@@ -14292,6 +14295,54 @@ virDomainMemoryDefParseXML(virDomainXMLOption *xmlopt,
 }
 
 
+void virDomainIommufdDefFree(virDomainIommufdDef *def)
+{
+    if (!def)
+        return;
+
+    g_free(def->id);
+
+    g_free(def->fd);
+
+    g_free(def);
+}
+
+
+static virDomainIommufdDef *
+virDomainIommufdParseXML(xmlNodePtr node,
+                         xmlXPathContextPtr ctxt)
+{
+    virDomainIommufdDef *def;
+    g_autofree char *iommufdId = NULL;
+    g_autofree char *iommufdFd = NULL;
+    VIR_XPATH_NODE_AUTORESTORE(ctxt)
+
+    ctxt->node = node;
+
+    def = g_new0(virDomainIommufdDef, 1);
+
+    if (!(iommufdId = virXPathString("string(./id)", ctxt)))
+        goto error;
+
+    def->id = g_strdup(iommufdId);
+
+    iommufdFd = virXPathString("string(./fd)", ctxt);
+
+    def->fd = g_strdup(iommufdFd);
+
+    if (!def->id)
+        goto error;
+
+    if (iommufdFd && !def->fd)
+        goto error;
+
+    return def;
+ error:
+    virDomainIommufdDefFree(def);
+    return NULL;
+}
+
+
 static virDomainIOMMUDef *
 virDomainIOMMUDefParseXML(virDomainXMLOption *xmlopt,
                           xmlNodePtr node,
@@ -14299,7 +14350,7 @@ virDomainIOMMUDefParseXML(virDomainXMLOption *xmlopt,
                           unsigned int flags)
 {
     VIR_XPATH_NODE_AUTORESTORE(ctxt)
-    xmlNodePtr driver;
+    xmlNodePtr driver, iommufd;
     g_autoptr(virDomainIOMMUDef) iommu = NULL;
 
     ctxt->node = node;
@@ -14333,6 +14384,11 @@ virDomainIOMMUDefParseXML(virDomainXMLOption *xmlopt,
 
         if (virXMLPropTristateSwitch(driver, "dma_translation", VIR_XML_PROP_NONE,
                                      &iommu->dma_translation) < 0)
+            return NULL;
+    }
+
+    if ((iommufd = virXPathNode("./iommufd", ctxt))) {
+        if (!(iommu->iommufd = virDomainIommufdParseXML(iommufd, ctxt)))
             return NULL;
     }
 
@@ -16383,6 +16439,25 @@ virDomainIOMMUDefEquals(const virDomainIOMMUDef *a,
         a->aw_bits != b->aw_bits ||
         a->dma_translation != b->dma_translation)
         return false;
+
+    if (a->iommufd && b->iommufd) {
+        if (a->iommufd->id && b->iommufd->id) {
+            if (STRNEQ(a->iommufd->id, b->iommufd->id))
+                return false;
+        } else if ((a->iommufd->id && !b->iommufd->id) ||
+                   (!a->iommufd->id && b->iommufd->id)) {
+            return false;
+        }
+        if (a->iommufd->fd && b->iommufd->fd) {
+            if (STRNEQ(a->iommufd->fd, b->iommufd->fd))
+                return false;
+        } else if ((a->iommufd->fd && !b->iommufd->fd) ||
+                   (!a->iommufd->fd && b->iommufd->fd)) {
+            return false;
+        }
+    } else {
+        return false;
+    }
 
     switch (a->info.type) {
     case VIR_DOMAIN_DEVICE_ADDRESS_TYPE_PCI:
@@ -22076,6 +22151,27 @@ virDomainIOMMUDefCheckABIStability(virDomainIOMMUDef *src,
                        _("Target domain IOMMU device dma translation '%1$s' does not match source '%2$s'"),
                        virTristateSwitchTypeToString(dst->dma_translation),
                        virTristateSwitchTypeToString(src->dma_translation));
+        return false;
+    }
+    if (src->iommufd && dst->iommufd) {
+        if (STRNEQ(src->iommufd->id, dst->iommufd->id)) {
+            virReportError(VIR_ERR_CONFIG_UNSUPPORTED,
+                           _("Target domain IOMMU device iommufd id '%1$s' does not match source '%2$s'"),
+                           dst->iommufd->id,
+                           src->iommufd->id);
+            return false;
+        }
+        if (STRNEQ(src->iommufd->fd, dst->iommufd->fd)) {
+            virReportError(VIR_ERR_CONFIG_UNSUPPORTED,
+                           _("Target domain IOMMU device iommufd fd '%1$s' does not match source '%2$s'"),
+                           dst->iommufd->fd,
+                           src->iommufd->fd);
+            return false;
+        }
+    } else if ((src->iommufd && !dst->iommufd) ||
+               (!src->iommufd && dst->iommufd)) {
+        virReportError(VIR_ERR_INTERNAL_ERROR, "%s",
+                       _("Target domain IOMMU device iommufd does not match source"));
         return false;
     }
 
@@ -28309,6 +28405,16 @@ virDomainIOMMUDefFormat(virBuffer *buf,
     }
 
     virXMLFormatElement(&childBuf, "driver", &driverAttrBuf, NULL);
+
+    if (iommu->iommufd) {
+        virBufferAddLit(&childBuf, "<iommufd>\n");
+        virBufferAdjustIndent(&childBuf, 2);
+        virBufferAsprintf(&childBuf, "<id>%s</id>\n", iommu->iommufd->id);
+        if (iommu->iommufd->fd)
+            virBufferAsprintf(&childBuf, "<fd>%s</fd>\n", iommu->iommufd->fd);
+        virBufferAdjustIndent(&childBuf, -2);
+        virBufferAddLit(&childBuf, "</iommufd>\n");
+    }
 
     virDomainDeviceInfoFormat(&childBuf, &iommu->info, 0);
 

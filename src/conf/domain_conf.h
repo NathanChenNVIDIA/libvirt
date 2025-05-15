@@ -3010,6 +3010,11 @@ typedef enum {
     VIR_DOMAIN_IOMMU_MODEL_LAST
 } virDomainIOMMUModel;
 
+struct _virDomainIommufdDef {
+    char *id;
+    char *fd;
+};
+
 struct _virDomainIOMMUDef {
     virDomainIOMMUModel model;
     virTristateSwitch intremap;
@@ -3017,6 +3022,8 @@ struct _virDomainIOMMUDef {
     virTristateSwitch eim;
     virTristateSwitch iotlb;
     unsigned int aw_bits;
+    virDomainIommufdDef *iommufd;
+
     virDomainDeviceInfo info;
     virTristateSwitch dma_translation;
 };
@@ -3747,6 +3754,7 @@ virDomainVideoDef *virDomainVideoDefNew(virDomainXMLOption *xmlopt);
 void virDomainVideoDefFree(virDomainVideoDef *def);
 G_DEFINE_AUTOPTR_CLEANUP_FUNC(virDomainVideoDef, virDomainVideoDefFree);
 void virDomainVideoDefClear(virDomainVideoDef *def);
+void virDomainIommufdDefFree(virDomainIommufdDef *def);
 virDomainHostdevDef *virDomainHostdevDefNew(void);
 void virDomainHostdevDefFree(virDomainHostdevDef *def);
 void virDomainHubDefFree(virDomainHubDef *def);
