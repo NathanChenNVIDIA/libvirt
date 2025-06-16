@@ -108,6 +108,7 @@
   <flag name='vnc-power-control'/>
   <flag name='rotation-rate'/>
   <flag name='acpi-index'/>
+  <flag name='acpi-egm-memory'/>
   <flag name='input-linux'/>
   <flag name='confidential-guest-support'/>
   <flag name='set-action'/>

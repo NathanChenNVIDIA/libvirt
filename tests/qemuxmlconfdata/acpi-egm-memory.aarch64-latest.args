@@ -1,0 +1,1 @@
+-object acpi-egm-memory,id=egm0,pci-dev=ua-hostdev0,node=0
