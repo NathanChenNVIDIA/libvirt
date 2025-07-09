@@ -6266,6 +6266,7 @@
           <value>smmuv3</value>
           <value>virtio</value>
           <value>amd</value>
+          <value>smmuv3Dev</value>
         </choice>
       </attribute>
       <interleave>
@@ -6309,6 +6310,36 @@
             <optional>
               <attribute name="passthrough">
                 <ref name="virOnOff"/>
+              </attribute>
+            </optional>
+            <optional>
+              <attribute name="parentIdx">
+                <data type="unsignedInt"/>
+              </attribute>
+            </optional>
+            <optional>
+              <attribute name="accel">
+                <ref name="virOnOff"/>
+              </attribute>
+            </optional>
+            <optional>
+              <attribute name="ats">
+                <ref name="virOnOff"/>
+              </attribute>
+            </optional>
+            <optional>
+              <attribute name="ril">
+                <ref name="virOnOff"/>
+              </attribute>
+            </optional>
+            <optional>
+              <attribute name="pasid">
+                <ref name="virOnOff"/>
+              </attribute>
+            </optional>
+            <optional>
+              <attribute name="oas">
+                <data type="unsignedInt"/>
               </attribute>
             </optional>
           </element>

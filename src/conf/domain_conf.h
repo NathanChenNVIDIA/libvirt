@@ -3039,6 +3039,7 @@ typedef enum {
     VIR_DOMAIN_IOMMU_MODEL_SMMUV3,
     VIR_DOMAIN_IOMMU_MODEL_VIRTIO,
     VIR_DOMAIN_IOMMU_MODEL_AMD,
+    VIR_DOMAIN_IOMMU_MODEL_SMMUV3_DEV,
 
     VIR_DOMAIN_IOMMU_MODEL_LAST
 } virDomainIOMMUModel;
@@ -3054,6 +3055,12 @@ struct _virDomainIOMMUDef {
     virTristateSwitch dma_translation;
     virTristateSwitch xtsup;
     virTristateSwitch pt;
+    int parent_idx;
+    virTristateSwitch accel;
+    virTristateSwitch ats;
+    virTristateSwitch ril;
+    virTristateSwitch pasid;
+    unsigned int oas;
 };
 
 typedef enum {

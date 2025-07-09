@@ -1353,6 +1353,7 @@ VIR_ENUM_IMPL(virDomainIOMMUModel,
               "smmuv3",
               "virtio",
               "amd",
+              "smmuv3Dev",
 );
 
 VIR_ENUM_IMPL(virDomainVsockModel,
@@ -2812,6 +2813,8 @@ virDomainIOMMUDefNew(void)
     g_autoptr(virDomainIOMMUDef) iommu = NULL;
 
     iommu = g_new0(virDomainIOMMUDef, 1);
+
+    iommu->parent_idx = -1;
 
     return g_steal_pointer(&iommu);
 }
@@ -14407,6 +14410,7 @@ virDomainIOMMUDefParseXML(virDomainXMLOption *xmlopt,
                        VIR_XML_PROP_REQUIRED, &iommu->model) < 0)
         return NULL;
 
+
     if ((driver = virXPathNode("./driver", ctxt))) {
         if (virXMLPropTristateSwitch(driver, "intremap", VIR_XML_PROP_NONE,
                                      &iommu->intremap) < 0)
@@ -14438,6 +14442,30 @@ virDomainIOMMUDefParseXML(virDomainXMLOption *xmlopt,
 
         if (virXMLPropTristateSwitch(driver, "passthrough", VIR_XML_PROP_NONE,
                                      &iommu->pt) < 0)
+            return NULL;
+
+        if (virXMLPropInt(driver, "parentIdx", 10, VIR_XML_PROP_NONE,
+                          &iommu->parent_idx, -1) < 0)
+            return NULL;
+
+        if (virXMLPropTristateSwitch(driver, "accel", VIR_XML_PROP_NONE,
+                                     &iommu->accel) < 0)
+            return NULL;
+
+        if (virXMLPropTristateSwitch(driver, "ats", VIR_XML_PROP_NONE,
+                                     &iommu->ats) < 0)
+            return NULL;
+
+        if (virXMLPropTristateSwitch(driver, "ril", VIR_XML_PROP_NONE,
+                                     &iommu->ril) < 0)
+            return NULL;
+
+        if (virXMLPropTristateSwitch(driver, "pasid", VIR_XML_PROP_NONE,
+                                     &iommu->pasid) < 0)
+            return NULL;
+
+        if (virXMLPropUInt(driver, "oas", 10, VIR_XML_PROP_NONE,
+                           &iommu->oas) < 0)
             return NULL;
     }
 
@@ -22113,6 +22141,42 @@ virDomainIOMMUDefCheckABIStability(virDomainIOMMUDef *src,
                        virTristateSwitchTypeToString(src->xtsup));
         return false;
     }
+    if (src->parent_idx != dst->parent_idx) {
+        virReportError(VIR_ERR_CONFIG_UNSUPPORTED,
+                       _("Target domain IOMMU device parent_idx value '%1$d' does not match source '%2$d'"),
+                       dst->parent_idx, src->parent_idx);
+        return false;
+    }
+    if (src->accel != dst->accel) {
+        virReportError(VIR_ERR_CONFIG_UNSUPPORTED,
+                       _("Target domain IOMMU device accel value '%1$d' does not match source '%2$d'"),
+                       dst->accel, src->accel);
+        return false;
+    }
+    if (src->ats != dst->ats) {
+        virReportError(VIR_ERR_CONFIG_UNSUPPORTED,
+                       _("Target domain IOMMU device ATS value '%1$d' does not match source '%2$d'"),
+                       dst->ats, src->ats);
+        return false;
+    }
+    if (src->ril != dst->ril) {
+        virReportError(VIR_ERR_CONFIG_UNSUPPORTED,
+                       _("Target domain IOMMU device ril value '%1$d' does not match source '%2$d'"),
+                       dst->ril, src->ril);
+        return false;
+    }
+    if (src->pasid != dst->pasid) {
+        virReportError(VIR_ERR_CONFIG_UNSUPPORTED,
+                       _("Target domain IOMMU device pasid value '%1$d' does not match source '%2$d'"),
+                       dst->pasid, src->pasid);
+        return false;
+    }
+    if (src->oas != dst->oas) {
+        virReportError(VIR_ERR_CONFIG_UNSUPPORTED,
+                       _("Target domain IOMMU device oas value '%1$d' does not match source '%2$d'"),
+                       dst->oas, src->oas);
+        return false;
+    }
 
     return virDomainDeviceInfoCheckABIStability(&src->info, &dst->info);
 }
@@ -28408,6 +28472,30 @@ virDomainIOMMUDefFormat(virBuffer *buf,
     if (iommu->xtsup != VIR_TRISTATE_SWITCH_ABSENT) {
         virBufferAsprintf(&driverAttrBuf, " xtsup='%s'",
                           virTristateSwitchTypeToString(iommu->xtsup));
+    }
+    if (iommu->parent_idx >= 0) {
+        virBufferAsprintf(&driverAttrBuf, " parentIdx='%d'",
+                          iommu->parent_idx);
+    }
+    if (iommu->accel != VIR_TRISTATE_SWITCH_ABSENT) {
+        virBufferAsprintf(&driverAttrBuf, " accel='%s'",
+                          virTristateSwitchTypeToString(iommu->accel));
+    }
+    if (iommu->ats != VIR_TRISTATE_SWITCH_ABSENT) {
+        virBufferAsprintf(&driverAttrBuf, " ats='%s'",
+                          virTristateSwitchTypeToString(iommu->ats));
+    }
+    if (iommu->ril != VIR_TRISTATE_SWITCH_ABSENT) {
+        virBufferAsprintf(&driverAttrBuf, " ril='%s'",
+                          virTristateSwitchTypeToString(iommu->ril));
+    }
+    if (iommu->pasid != VIR_TRISTATE_SWITCH_ABSENT) {
+        virBufferAsprintf(&driverAttrBuf, " pasid='%s'",
+                          virTristateSwitchTypeToString(iommu->pasid));
+    }
+    if (iommu->oas > 0) {
+        virBufferAsprintf(&driverAttrBuf, " oas='%d'",
+                          iommu->oas);
     }
 
     virXMLFormatElement(&childBuf, "driver", &driverAttrBuf, NULL);

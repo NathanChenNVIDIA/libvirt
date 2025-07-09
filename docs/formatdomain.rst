@@ -9161,8 +9161,9 @@ Example:
 ``model``
    Supported values are ``intel`` (for Q35 guests) ``smmuv3``
    (:since:`since 5.5.0`, for ARM virt guests), ``virtio``
-   (:since:`since 8.3.0`, for Q35 and ARM virt guests) and
-   ``amd`` (:since:`since 11.5.0`).
+   (:since:`since 8.3.0`, for Q35 and ARM virt guests),
+   ``amd`` (:since:`since 11.5.0`), and ``smmuv3Dev`` (for
+   ARM virt guests).
 
 ``driver``
    The ``driver`` subelement can be used to configure additional options, some
@@ -9211,6 +9212,37 @@ Example:
    ``xtsup``
       Enable x2APIC mode. Useful for higher number of guest CPUs.
       :since:`Since 11.5.0` (QEMU/KVM and ``amd`` model only)
+
+   ``parentIdx``
+      The ``parentIdx`` attribute notes the index of the controller that an
+      IOMMU device is attached to. (QEMU/KVM and ``smmuv3Dev`` model only)
+
+   ``accel``
+      The ``accel`` attribute with possible values ``on`` and ``off`` can be used
+      to enable hardware acceleration support for smmuv3Dev IOMMU devices.
+      (QEMU/KVM and ``smmuv3Dev`` model only)
+
+   ``ats``
+      The ``ats`` attribute with possible values ``on`` and ``off`` can be used
+      to enable reporting Address Translation Services capability to the guest
+      for smmuv3Dev IOMMU devices with ``accel`` set to ``on``, if the host
+      SMMUv3 supports ATS and the associated passthrough device supports ATS.
+      (QEMU/KVM and ``smmuv3Dev`` model only)
+
+   ``ril``
+      The ``ril`` attribute with possible values ``on`` and ``off`` can be used
+      to report whether Range Invalidation for smmuv3Dev IOMMU devices with
+      ``accel`` set to ``on`` is compatible with host SMMUv3 support.
+      (QEMU/KVM and ``smmuv3Dev`` model only)
+
+   ``pasid``
+      The ``pasid`` attribute with possible values ``on`` and ``off`` can be
+      used to enable Process Address Space ID support for smmuv3Dev IOMMU devices
+      with ``accel`` set to ``on``. (QEMU/KVM and ``smmuv3Dev`` model only)
+
+   ``oas``
+      The ``oas`` attribute sets the output address size in units of bits.
+      (QEMU/KVM and ``smmuv3Dev`` model only)
 
 The ``virtio`` IOMMU devices can further have ``address`` element as described
 in `Device addresses`_ (address has to by type of ``pci``).
