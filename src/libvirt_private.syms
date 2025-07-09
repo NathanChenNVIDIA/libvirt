@@ -491,6 +491,8 @@ virDomainInputSourceGrabToggleTypeToString;
 virDomainInputSourceGrabTypeFromString;
 virDomainInputSourceGrabTypeToString;
 virDomainInputTypeToString;
+virDomainIOMMUDefEquals;
+virDomainIOMMUDefFind;
 virDomainIOMMUDefFree;
 virDomainIOMMUDefNew;
 virDomainIOMMUModelTypeFromString;
