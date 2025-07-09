@@ -2365,24 +2365,25 @@ qemuDomainAssignDevicePCISlots(virDomainDef *def,
         /* Nada - none are PCI based (yet) */
     }
 
-    if (def->iommu) {
-        virDomainIOMMUDef *iommu = def->iommu;
+    if (def->iommu && def->niommus > 0) {
+        for (i = 0; i < def->niommus; i++) {
+            virDomainIOMMUDef *iommu = def->iommu[i];
+            switch (iommu->model) {
+            case VIR_DOMAIN_IOMMU_MODEL_VIRTIO:
+            case VIR_DOMAIN_IOMMU_MODEL_AMD:
+                if (virDeviceInfoPCIAddressIsWanted(&iommu->info) &&
+                    qemuDomainPCIAddressReserveNextAddr(addrs, &iommu->info) < 0) {
+                    return -1;
+                }
+                break;
 
-        switch (iommu->model) {
-        case VIR_DOMAIN_IOMMU_MODEL_VIRTIO:
-        case VIR_DOMAIN_IOMMU_MODEL_AMD:
-            if (virDeviceInfoPCIAddressIsWanted(&iommu->info) &&
-                qemuDomainPCIAddressReserveNextAddr(addrs, &iommu->info) < 0) {
-                return -1;
+            case VIR_DOMAIN_IOMMU_MODEL_INTEL:
+            case VIR_DOMAIN_IOMMU_MODEL_SMMUV3:
+            case VIR_DOMAIN_IOMMU_MODEL_SMMUV3_DEV:
+            case VIR_DOMAIN_IOMMU_MODEL_LAST:
+                /* These are not PCI devices */
+                break;
             }
-            break;
-
-        case VIR_DOMAIN_IOMMU_MODEL_INTEL:
-        case VIR_DOMAIN_IOMMU_MODEL_SMMUV3:
-        case VIR_DOMAIN_IOMMU_MODEL_SMMUV3_DEV:
-        case VIR_DOMAIN_IOMMU_MODEL_LAST:
-            /* These are not PCI devices */
-            break;
         }
     }
 
