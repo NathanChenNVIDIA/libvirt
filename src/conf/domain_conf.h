@@ -3039,6 +3039,7 @@ typedef enum {
     VIR_DOMAIN_IOMMU_MODEL_SMMUV3,
     VIR_DOMAIN_IOMMU_MODEL_VIRTIO,
     VIR_DOMAIN_IOMMU_MODEL_AMD,
+    VIR_DOMAIN_IOMMU_MODEL_SMMUV3_DEV,
 
     VIR_DOMAIN_IOMMU_MODEL_LAST
 } virDomainIOMMUModel;
@@ -3050,6 +3051,7 @@ struct _virDomainIOMMUDef {
     virTristateSwitch eim;
     virTristateSwitch iotlb;
     unsigned int aw_bits;
+    int parent_idx;
     virDomainDeviceInfo info;
     virTristateSwitch dma_translation;
     virTristateSwitch xtsup;
