@@ -6204,6 +6204,7 @@
           <value>smmuv3</value>
           <value>virtio</value>
           <value>amd</value>
+          <value>smmuv3Dev</value>
         </choice>
       </attribute>
       <interleave>

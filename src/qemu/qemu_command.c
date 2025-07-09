@@ -6239,6 +6239,33 @@ qemuBuildBootCommandLine(virCommand *cmd,
 }
 
 
+static virJSONValue *
+qemuBuildPCISmmuv3DevDevProps(const virDomainDef *def,
+                              const virDomainIOMMUDef *iommu)
+{
+    g_autoptr(virJSONValue) props = NULL;
+    g_autofree char *pciaddr = NULL;
+    g_autofree char *bus = qemuBuildDeviceAddressPCIGetBus(def, &iommu->info);
+
+    if (!bus)
+        return NULL;
+
+    if (iommu->info.addr.pci.function != 0) {
+        pciaddr = g_strdup_printf("0x%x.0x%x", iommu->info.addr.pci.slot,
+                                  iommu->info.addr.pci.function);
+    } else {
+        pciaddr = g_strdup_printf("0x%x", iommu->info.addr.pci.slot);
+    }
+    if (virJSONValueObjectAdd(&props,
+                              "s:driver", "arm-smmuv3-accel",
+                              "s:bus", bus,
+                              NULL) < 0)
+        return NULL;
+
+    return g_steal_pointer(&props);
+}
+
+
 static int
 qemuBuildIOMMUCommandLine(virCommand *cmd,
                           const virDomainDef *def,
@@ -6287,7 +6314,6 @@ qemuBuildIOMMUCommandLine(virCommand *cmd,
         return 0;
 
     case VIR_DOMAIN_IOMMU_MODEL_SMMUV3:
-        /* There is no -device for SMMUv3, so nothing to be done here */
         return 0;
 
     case VIR_DOMAIN_IOMMU_MODEL_AMD:
@@ -6313,6 +6339,17 @@ qemuBuildIOMMUCommandLine(virCommand *cmd,
                                   NULL) < 0)
             return -1;
 
+        if (qemuBuildDeviceCommandlineFromJSON(cmd, props, def, qemuCaps) < 0)
+            return -1;
+
+        return 0;
+
+    case VIR_DOMAIN_IOMMU_MODEL_SMMUV3_DEV:
+        /* Ignore unassigned devices */
+        if (iommu->info.type == VIR_DOMAIN_DEVICE_ADDRESS_TYPE_UNASSIGNED)
+            return -1;
+        if (!(props = qemuBuildPCISmmuv3DevDevProps(def, iommu)))
+            return -1;
         if (qemuBuildDeviceCommandlineFromJSON(cmd, props, def, qemuCaps) < 0)
             return -1;
 
@@ -7151,6 +7188,7 @@ qemuBuildMachineCommandLine(virCommand *cmd,
         case VIR_DOMAIN_IOMMU_MODEL_INTEL:
         case VIR_DOMAIN_IOMMU_MODEL_VIRTIO:
         case VIR_DOMAIN_IOMMU_MODEL_AMD:
+        case VIR_DOMAIN_IOMMU_MODEL_SMMUV3_DEV:
             /* These IOMMUs are formatted in qemuBuildIOMMUCommandLine */
             break;
 

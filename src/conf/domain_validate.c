@@ -3104,6 +3104,8 @@ virDomainIOMMUDefValidate(const virDomainIOMMUDef *iommu)
         }
         break;
 
+    case VIR_DOMAIN_IOMMU_MODEL_SMMUV3_DEV:
+
     case VIR_DOMAIN_IOMMU_MODEL_LAST:
         break;
     }
@@ -3121,6 +3123,7 @@ virDomainIOMMUDefValidate(const virDomainIOMMUDef *iommu)
 
     case VIR_DOMAIN_IOMMU_MODEL_VIRTIO:
     case VIR_DOMAIN_IOMMU_MODEL_AMD:
+    case VIR_DOMAIN_IOMMU_MODEL_SMMUV3_DEV:
     case VIR_DOMAIN_IOMMU_MODEL_LAST:
         break;
     }

@@ -1353,6 +1353,7 @@ VIR_ENUM_IMPL(virDomainIOMMUModel,
               "smmuv3",
               "virtio",
               "amd",
+              "smmuv3Dev",
 );
 
 VIR_ENUM_IMPL(virDomainVsockModel,
