@@ -851,7 +851,12 @@ qemuValidateDomainVCpuTopology(const virDomainDef *def, virQEMUCaps *qemuCaps)
                            QEMU_MAX_VCPUS_WITHOUT_EIM);
             return -1;
         }
-        if (!def->iommu || def->iommu->eim != VIR_TRISTATE_SWITCH_ON) {
+        if (!def->iommu || def->niommus == 0) {
+            virReportError(VIR_ERR_CONFIG_UNSUPPORTED,
+                           _("iommu device not found. more than %1$d vCPUs require extended interrupt mode enabled on the iommu device"),
+                           QEMU_MAX_VCPUS_WITHOUT_EIM);
+            return -1;
+        } else if (def->iommu[0]->eim != VIR_TRISTATE_SWITCH_ON) {
             virReportError(VIR_ERR_CONFIG_UNSUPPORTED,
                            _("more than %1$d vCPUs require extended interrupt mode enabled on the iommu device"),
                            QEMU_MAX_VCPUS_WITHOUT_EIM);
