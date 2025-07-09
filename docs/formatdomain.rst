@@ -9161,8 +9161,9 @@ Example:
 ``model``
    Supported values are ``intel`` (for Q35 guests) ``smmuv3``
    (:since:`since 5.5.0`, for ARM virt guests), ``virtio``
-   (:since:`since 8.3.0`, for Q35 and ARM virt guests) and
-   ``amd`` (:since:`since 11.5.0`).
+   (:since:`since 8.3.0`, for Q35 and ARM virt guests),
+   ``amd`` (:since:`since 11.5.0`), and ``smmuv3Dev`` (for
+   ARM virt guests).
 
 ``driver``
    The ``driver`` subelement can be used to configure additional options, some
@@ -9211,6 +9212,10 @@ Example:
    ``xtsup``
       Enable x2APIC mode. Useful for higher number of guest CPUs.
       :since:`Since 11.5.0` (QEMU/KVM and ``amd`` model only)
+
+   ``parentIdx``
+      The ``parentIdx`` attribute notes the index of the controller that an
+      IOMMU device is attached to. (QEMU/KVM and ``smmuv3Dev`` model only)
 
 The ``virtio`` IOMMU devices can further have ``address`` element as described
 in `Device addresses`_ (address has to by type of ``pci``).
