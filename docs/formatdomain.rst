@@ -9090,8 +9090,17 @@ Example:
 ``model``
    Supported values are ``intel`` (for Q35 guests) ``smmuv3``
    (:since:`since 5.5.0`, for ARM virt guests), ``virtio``
-   (:since:`since 8.3.0`, for Q35 and ARM virt guests) and
-   ``amd`` (:since:`since 11.5.0`).
+   (:since:`since 8.3.0`, for Q35 and ARM virt guests),
+   ``amd`` (:since:`since 11.5.0`), and ``smmuv3Dev`` (for
+   ARM virt guests).
+
+``parentIdx``
+   The ``parentIdx`` attribute notes the index of the controller that a
+   smmuv3Dev IOMMU device is attached to.
+
+``accel``
+   The ``accel`` attribute with possible values ``on`` and ``off`` can be used
+   to enable hardware acceleration support for smmuv3Dev IOMMU devices.
 
 ``driver``
    The ``driver`` subelement can be used to configure additional options, some

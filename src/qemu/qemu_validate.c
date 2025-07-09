@@ -5406,6 +5406,22 @@ qemuValidateDomainDeviceDefIOMMU(const virDomainIOMMUDef *iommu,
         }
         break;
 
+    case VIR_DOMAIN_IOMMU_MODEL_SMMUV3_DEV:
+        if (!qemuDomainIsARMVirt(def)) {
+            virReportError(VIR_ERR_CONFIG_UNSUPPORTED,
+                           _("IOMMU device: '%1$s' is only supported with ARM Virt machines"),
+                           virDomainIOMMUModelTypeToString(iommu->model));
+            return -1;
+        }
+        // TODO: Check for pluggable device SMMUv3 qemu capability
+        if (!virQEMUCapsGet(qemuCaps, QEMU_CAPS_MACHINE_VIRT_IOMMU)) {
+            virReportError(VIR_ERR_CONFIG_UNSUPPORTED,
+                           _("IOMMU device: '%1$s' is not supported with this QEMU binary"),
+                           virDomainIOMMUModelTypeToString(iommu->model));
+            return -1;
+        }
+        break;
+
     case VIR_DOMAIN_IOMMU_MODEL_LAST:
     default:
         virReportEnumRangeError(virDomainIOMMUModel, iommu->model);

@@ -6246,8 +6246,19 @@
           <value>smmuv3</value>
           <value>virtio</value>
           <value>amd</value>
+          <value>smmuv3Dev</value>
         </choice>
       </attribute>
+      <optional>
+        <attribute name="parentIdx">
+          <data type="unsignedInt"/>
+        </attribute>
+      </optional>
+      <optional>
+        <attribute name="accel">
+          <ref name="virOnOff"/>
+        </attribute>
+      </optional>
       <interleave>
         <optional>
           <element name="driver">
