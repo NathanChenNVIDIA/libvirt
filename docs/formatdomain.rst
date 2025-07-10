@@ -4581,6 +4581,7 @@ or:
        </source>
        <boot order='1'/>
        <rom bar='on' file='/etc/fake/boot.bin'/>
+       <iommufdId>iommufd0</iommufdId>
      </hostdev>
    </devices>
    ...
@@ -4829,6 +4830,14 @@ or:
    device; if PCI ROM loading is disabled through this attribute, attempts to
    tweak the loading process further using the ``bar`` or ``file`` attributes
    will be rejected. :since:`Since 4.3.0 (QEMU and KVM only)`.
+``iommufdId``
+   The ``iommufdId`` element is used to specify using the iommufd interface to
+   propagate DMA mappings to the kernel, instead of legacy VFIO. When the
+   element is present, an iommufd object with its ID specified by ``iommufdId``
+   will be created by the resulting qemu command. Libvirt will open the
+   /dev/iommu and VFIO device cdev, passing the associated file descriptor
+   numbers to the qemu command.
+
 ``address``
    The ``address`` element for USB devices has a ``bus`` and ``device``
    attribute to specify the USB bus and device number the device appears at on

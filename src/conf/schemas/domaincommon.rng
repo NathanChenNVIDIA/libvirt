@@ -6508,6 +6508,9 @@
           <ref name="address"/>
         </optional>
         <optional>
+          <ref name="iommufdId"/>
+        </optional>
+        <optional>
           <element name="readonly">
             <empty/>
           </element>
@@ -7758,6 +7761,12 @@
         <ref name="usbPort"/>
       </attribute>
       <empty/>
+    </element>
+  </define>
+
+  <define name="iommufdId">
+    <element name="iommufdId">
+      <text/>
     </element>
   </define>
 
