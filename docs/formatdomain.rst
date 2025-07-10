@@ -4920,6 +4920,13 @@ or:
    found is "problematic" in some way, the generic vfio-pci driver
    similarly be forced.
 
+   The ``<driver>`` element's ``iommufd`` attribute is used to specify
+   using the iommufd interface to propagate DMA mappings to the kernel,
+   instead of VFIO alone. When the attribute is present, an iommufd
+   object will be created by the resulting qemu command. Libvirt will
+   open the /dev/iommu and VFIO device cdev, passing the associated
+   file descriptor numbers to the qemu command.
+
    (Note: :since:`Since 1.0.5`, the ``name`` attribute has been
    described to be used to select the type of PCI device assignment
    ("vfio", "kvm", or "xen"), but those values have been mostly
