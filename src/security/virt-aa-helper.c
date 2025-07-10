@@ -1114,8 +1114,9 @@ get_files(vahControl * ctl)
 
             virDeviceHostdevPCIDriverName driverName = dev->source.subsys.u.pci.driver.name;
 
-            if (driverName == VIR_DEVICE_HOSTDEV_PCI_DRIVER_NAME_VFIO ||
-                driverName == VIR_DEVICE_HOSTDEV_PCI_DRIVER_NAME_DEFAULT) {
+            if ((driverName == VIR_DEVICE_HOSTDEV_PCI_DRIVER_NAME_VFIO ||
+                driverName == VIR_DEVICE_HOSTDEV_PCI_DRIVER_NAME_DEFAULT) &&
+                dev->source.subsys.u.pci.driver.iommufd != VIR_TRISTATE_BOOL_YES) {
                 needsVfio = true;
             }
 
@@ -1348,6 +1349,7 @@ get_files(vahControl * ctl)
         virBufferAddLit(&buf, "  \"/dev/vfio/vfio\" rw,\n");
         virBufferAddLit(&buf, "  \"/dev/vfio/[0-9]*\" rw,\n");
     }
+
     if (needsgl) {
         /* if using gl all sorts of further dri related paths will be needed */
         virBufferAddLit(&buf, "  # DRI/Mesa/(e)GL config and driver paths\n");
@@ -1385,9 +1387,18 @@ get_files(vahControl * ctl)
         }
     }
 
-    if (ctl->newfile &&
-        vah_add_file(&buf, ctl->newfile, "rwk") != 0) {
-        return -1;
+    if (ctl->newfile) {
+        const char *perms = "rwk";
+
+        /* VFIO and iommufd devices need mmap permission */
+        if (STRPREFIX(ctl->newfile, "/dev/vfio/devices/vfio") ||
+            STREQ(ctl->newfile, "/dev/iommu")) {
+            perms = "rwm";
+        }
+
+        if (vah_add_file(&buf, ctl->newfile, perms) != 0) {
+            return -1;
+        }
     }
 
     ctl->files = virBufferContentAndReset(&buf);
@@ -1561,8 +1572,15 @@ main(int argc, char **argv)
                 }
         }
         if (ctl->append && ctl->newfile) {
-            if (vah_add_file(&buf, ctl->newfile, "rwk") != 0)
-                goto cleanup;
+            const char *perms = "rwk";
+
+            if (STRPREFIX(ctl->newfile, "/dev/vfio/devices/vfio") ||
+                STREQ(ctl->newfile, "/dev/iommu")) {
+                perms = "rwm";
+            }
+
+            if (vah_add_file(&buf, ctl->newfile, perms) != 0)
+                return -1;
         } else {
             if (ctl->def->virtType == VIR_DOMAIN_VIRT_QEMU ||
                 ctl->def->virtType == VIR_DOMAIN_VIRT_KQEMU ||
