@@ -848,14 +848,18 @@ AppArmorSetSecurityHostdevLabel(virSecurityManager *mgr,
             goto done;
 
         if (pcisrc->driver.name == VIR_DEVICE_HOSTDEV_PCI_DRIVER_NAME_VFIO) {
-            char *vfioGroupDev = virPCIDeviceGetIOMMUGroupDev(pci);
+            if (dev->source.subsys.u.pci.driver.iommufd != VIR_TRISTATE_BOOL_YES) {
+                char *vfioGroupDev = virPCIDeviceGetIOMMUGroupDev(pci);
 
-            if (!vfioGroupDev) {
-                virPCIDeviceFree(pci);
-                goto done;
+                if (!vfioGroupDev) {
+                    virPCIDeviceFree(pci);
+                    goto done;
+                }
+                ret = AppArmorSetSecurityPCILabel(pci, vfioGroupDev, ptr);
+                VIR_FREE(vfioGroupDev);
+            } else {
+                ret = 0;
             }
-            ret = AppArmorSetSecurityPCILabel(pci, vfioGroupDev, ptr);
-            VIR_FREE(vfioGroupDev);
         } else {
             ret = virPCIDeviceFileIterate(pci, AppArmorSetSecurityPCILabel, ptr);
         }

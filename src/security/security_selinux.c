@@ -2256,14 +2256,18 @@ virSecuritySELinuxSetHostdevSubsysLabel(virSecurityManager *mgr,
             return -1;
 
         if (pcisrc->driver.name == VIR_DEVICE_HOSTDEV_PCI_DRIVER_NAME_VFIO) {
-            g_autofree char *vfioGroupDev = virPCIDeviceGetIOMMUGroupDev(pci);
+            if (dev->source.subsys.u.pci.driver.iommufd != VIR_TRISTATE_BOOL_YES) {
+                g_autofree char *vfioGroupDev = virPCIDeviceGetIOMMUGroupDev(pci);
 
-            if (!vfioGroupDev)
-                return -1;
+                if (!vfioGroupDev)
+                    return -1;
 
-            ret = virSecuritySELinuxSetHostdevLabelHelper(vfioGroupDev,
-                                                          false,
-                                                          &data);
+                ret = virSecuritySELinuxSetHostdevLabelHelper(vfioGroupDev,
+                                                              false,
+                                                              &data);
+            } else {
+                ret = 0;
+            }
         } else {
             ret = virPCIDeviceFileIterate(pci, virSecuritySELinuxSetPCILabel, &data);
         }
@@ -2491,12 +2495,16 @@ virSecuritySELinuxRestoreHostdevSubsysLabel(virSecurityManager *mgr,
             return -1;
 
         if (pcisrc->driver.name == VIR_DEVICE_HOSTDEV_PCI_DRIVER_NAME_VFIO) {
-            g_autofree char *vfioGroupDev = virPCIDeviceGetIOMMUGroupDev(pci);
+            if (dev->source.subsys.u.pci.driver.iommufd != VIR_TRISTATE_BOOL_YES) {
+                g_autofree char *vfioGroupDev = virPCIDeviceGetIOMMUGroupDev(pci);
 
-            if (!vfioGroupDev)
-                return -1;
+                if (!vfioGroupDev)
+                    return -1;
 
-            ret = virSecuritySELinuxRestoreFileLabel(mgr, vfioGroupDev, false, false);
+                ret = virSecuritySELinuxRestoreFileLabel(mgr, vfioGroupDev, false, false);
+            } else {
+                ret = 0;
+            }
         } else {
             ret = virPCIDeviceFileIterate(pci, virSecuritySELinuxRestorePCILabel, mgr);
         }

@@ -479,21 +479,23 @@ qemuSetupHostdevCgroup(virDomainObj *vm,
     g_autofree char *path = NULL;
     int perms;
 
-    if (!virCgroupHasController(priv->cgroup, VIR_CGROUP_CONTROLLER_DEVICES))
-        return 0;
+    if (dev->source.subsys.u.pci.driver.iommufd != VIR_TRISTATE_BOOL_YES) {
+        if (!virCgroupHasController(priv->cgroup, VIR_CGROUP_CONTROLLER_DEVICES))
+            return 0;
 
-    if (qemuDomainGetHostdevPath(dev, &path, &perms) < 0)
-        return -1;
+        if (qemuDomainGetHostdevPath(dev, &path, &perms) < 0)
+            return -1;
 
-    if (path &&
-        qemuCgroupAllowDevicePath(vm, path, perms, false) < 0) {
-        return -1;
-    }
+        if (path &&
+            qemuCgroupAllowDevicePath(vm, path, perms, false) < 0) {
+            return -1;
+        }
 
-    if (virHostdevNeedsVFIO(dev) &&
-        qemuCgroupAllowDevicePath(vm, QEMU_DEV_VFIO,
-                                  VIR_CGROUP_DEVICE_RW, false) < 0) {
-        return -1;
+        if (virHostdevNeedsVFIO(dev) &&
+            qemuCgroupAllowDevicePath(vm, QEMU_DEV_VFIO,
+                                      VIR_CGROUP_DEVICE_RW, false) < 0) {
+            return -1;
+        }
     }
 
     return 0;
