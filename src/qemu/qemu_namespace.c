@@ -342,16 +342,19 @@ qemuDomainSetupHostdev(virDomainObj *vm,
                        GSList **paths)
 {
     g_autofree char *path = NULL;
+    g_autofree char *vfioDevPath = NULL;
 
-    if (qemuDomainGetHostdevPath(hostdev, &path, NULL) < 0)
-        return -1;
+    if (hostdev->source.subsys.u.pci.driver.iommufd != VIR_TRISTATE_BOOL_YES) {
+        if (qemuDomainGetHostdevPath(hostdev, &path, NULL) < 0)
+            return -1;
 
-    if (path)
-        *paths = g_slist_prepend(*paths, g_steal_pointer(&path));
+        if (path)
+            *paths = g_slist_prepend(*paths, g_steal_pointer(&path));
 
-    if (virHostdevNeedsVFIO(hostdev) &&
-        (!hotplug || !qemuDomainNeedsVFIO(vm->def)))
-        *paths = g_slist_prepend(*paths, g_strdup(QEMU_DEV_VFIO));
+        if (virHostdevNeedsVFIO(hostdev) &&
+            (!hotplug || !qemuDomainNeedsVFIO(vm->def)))
+            *paths = g_slist_prepend(*paths, g_strdup(QEMU_DEV_VFIO));
+    }
 
     return 0;
 }

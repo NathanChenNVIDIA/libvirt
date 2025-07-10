@@ -1290,6 +1290,30 @@ virSecurityDACSetHostdevLabel(virSecurityManager *mgr,
             ret = virSecurityDACSetHostdevLabelHelper(vfioGroupDev,
                                                       false,
                                                       &cbdata);
+            if (dev->source.subsys.u.pci.driver.iommufd == VIR_TRISTATE_BOOL_YES) {
+                g_autofree char *iommufdDir = NULL;
+                g_autofree char *vfiofdDev = NULL;
+                if (virPCIDeviceGetVfioPath(&dev->source.subsys.u.pci.addr, &vfiofdDev) < 0)
+                    return -1;
+
+                if (vfiofdDev) {
+                    int vfioFdRet, iommufdRet;
+                    vfioFdRet = virSecurityDACSetHostdevLabelHelper(vfiofdDev,
+                                                                    false,
+                                                                    &cbdata);
+                    if (vfioFdRet < 0)
+                        ret = vfioFdRet;
+
+                    iommufdDir = g_strdup("/dev/iommu");
+                    iommufdRet = virSecurityDACSetHostdevLabelHelper(iommufdDir,
+                                                                     false,
+                                                                     &cbdata);
+                    if (iommufdRet < 0)
+                        ret = iommufdRet;
+                } else {
+                    return -1;
+                }
+            }
         } else {
             ret = virPCIDeviceFileIterate(pci,
                                           virSecurityDACSetPCILabel,
@@ -1450,6 +1474,28 @@ virSecurityDACRestoreHostdevLabel(virSecurityManager *mgr,
 
             ret = virSecurityDACRestoreFileLabelInternal(mgr, NULL,
                                                          vfioGroupDev, false);
+            if (dev->source.subsys.u.pci.driver.iommufd == VIR_TRISTATE_BOOL_YES) {
+                g_autofree char *iommufdDir = NULL;
+                g_autofree char *vfiofdDev = NULL;
+                if (virPCIDeviceGetVfioPath(&dev->source.subsys.u.pci.addr, &vfiofdDev) < 0)
+                    return -1;
+
+                if (vfiofdDev) {
+                    int vfioFdRet, iommufdRet;
+                    vfioFdRet = virSecurityDACRestoreFileLabelInternal(mgr, NULL,
+                                                                       vfiofdDev, false);
+                    if (vfioFdRet < 0)
+                        ret = vfioFdRet;
+
+                    iommufdDir = g_strdup("/dev/iommu");
+                    iommufdRet = virSecurityDACRestoreFileLabelInternal(mgr, NULL,
+                                                                        iommufdDir, false);
+                    if (iommufdRet < 0)
+                        ret = iommufdRet;
+                } else {
+                    return -1;
+                }
+            }
         } else {
             ret = virPCIDeviceFileIterate(pci, virSecurityDACRestorePCILabel, mgr);
         }
