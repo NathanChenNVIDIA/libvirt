@@ -4846,6 +4846,8 @@ qemuBuildPCIHostdevDevProps(const virDomainDef *def,
                               "S:failover_pair_id", failover_pair_id,
                               "S:display", qemuOnOffAuto(pcisrc->display),
                               "B:ramfb", ramfb,
+                              "S:iommufd", dev->iommufdId,
+                              "S:fd", dev->iommufdFd,
                               NULL) < 0)
         return NULL;
 
@@ -5225,6 +5227,8 @@ qemuBuildHostdevCommandLine(virCommand *cmd,
                             virQEMUCaps *qemuCaps)
 {
     size_t i;
+    g_autoptr(virJSONValue) props = NULL;
+    int iommufd = 0;
 
     for (i = 0; i < def->nhostdevs; i++) {
         virDomainHostdevDef *hostdev = def->hostdevs[i];
@@ -5233,6 +5237,18 @@ qemuBuildHostdevCommandLine(virCommand *cmd,
         g_autoptr(virJSONValue) devprops = NULL;
         g_autofree char *vhostfdName = NULL;
         int vhostfd = -1;
+
+        if (hostdev->iommufdId && iommufd == 0) {
+            iommufd = 1;
+            if (qemuMonitorCreateObjectProps(&props, "iommufd",
+                                             hostdev->iommufdId,
+                                             "S:fd", hostdev->iommufdFd,
+                                             NULL) < 0)
+                return -1;
+
+            if (qemuBuildObjectCommandlineFromJSON(cmd, props) < 0)
+                return -1;
+        }
 
         if (hostdev->mode != VIR_DOMAIN_HOSTDEV_MODE_SUBSYS)
             continue;
