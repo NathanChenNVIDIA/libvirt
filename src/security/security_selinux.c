@@ -2248,6 +2248,19 @@ virSecuritySELinuxSetHostdevSubsysLabel(virSecurityManager *mgr,
             ret = virSecuritySELinuxSetHostdevLabelHelper(vfioGroupDev,
                                                           false,
                                                           &data);
+            if (dev->iommufdId) {
+                g_autofree char *vfiofdDev = virPCIDeviceGetIOMMUFDDev(pci);
+                if (vfiofdDev) {
+                    int ret2 = virSecuritySELinuxSetHostdevLabelHelper(vfiofdDev,
+                                                                       false,
+                                                                       &data);
+                    if (ret2 < 0)
+                        ret = ret2;
+                } else {
+                    return -1;
+                }
+            }
+
         } else {
             ret = virPCIDeviceFileIterate(pci, virSecuritySELinuxSetPCILabel, &data);
         }
@@ -2481,6 +2494,17 @@ virSecuritySELinuxRestoreHostdevSubsysLabel(virSecurityManager *mgr,
                 return -1;
 
             ret = virSecuritySELinuxRestoreFileLabel(mgr, vfioGroupDev, false);
+
+            if (dev->iommufdId) {
+                g_autofree char *vfiofdDev = virPCIDeviceGetIOMMUFDDev(pci);
+                if (vfiofdDev) {
+                    int ret2 = virSecuritySELinuxRestoreFileLabel(mgr, vfiofdDev, false);
+                    if (ret2 < 0)
+                        ret = ret2;
+                } else {
+                    return -1;
+                }
+            }
         } else {
             ret = virPCIDeviceFileIterate(pci, virSecuritySELinuxRestorePCILabel, mgr);
         }
