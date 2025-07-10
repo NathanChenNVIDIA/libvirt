@@ -1290,6 +1290,18 @@ virSecurityDACSetHostdevLabel(virSecurityManager *mgr,
             ret = virSecurityDACSetHostdevLabelHelper(vfioGroupDev,
                                                       false,
                                                       &cbdata);
+            if (dev->iommufdId) {
+                g_autofree char *vfiofdDev = virPCIDeviceGetIOMMUFDDev(pci);
+                if (vfiofdDev) {
+                    int ret2 = virSecurityDACSetHostdevLabelHelper(vfiofdDev,
+                                                                   false,
+                                                                   &cbdata);
+                    if (ret2 < 0)
+                        ret = ret2;
+                } else {
+                    return -1;
+                }
+            }
         } else {
             ret = virPCIDeviceFileIterate(pci,
                                           virSecurityDACSetPCILabel,
@@ -1450,6 +1462,17 @@ virSecurityDACRestoreHostdevLabel(virSecurityManager *mgr,
 
             ret = virSecurityDACRestoreFileLabelInternal(mgr, NULL,
                                                          vfioGroupDev, false);
+            if (dev->iommufdId) {
+                g_autofree char *vfiofdDev = virPCIDeviceGetIOMMUFDDev(pci);
+                if (vfiofdDev) {
+                    int ret2 = virSecurityDACRestoreFileLabelInternal(mgr, NULL,
+                                                                      vfiofdDev, false);
+                    if (ret2 < 0)
+                        ret = ret2;
+                } else {
+                    return -1;
+                }
+            }
         } else {
             ret = virPCIDeviceFileIterate(pci, virSecurityDACRestorePCILabel, mgr);
         }
