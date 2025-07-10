@@ -375,6 +375,7 @@ struct _virDomainHostdevDef {
         virDomainHostdevCaps caps;
     } source;
     virDomainNetTeamingInfo *teaming;
+    char *iommufdId;
     virDomainDeviceInfo *info; /* Guest address */
 };
 
