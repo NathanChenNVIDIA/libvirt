@@ -2162,6 +2162,7 @@ mymain(void)
     DO_TEST_CAPS_LATEST_PARSE_ERROR("hostdev-mdev-display-ramfb-multiple");
     DO_TEST_CAPS_LATEST_PARSE_ERROR("hostdev-vfio-zpci-wrong-arch");
     DO_TEST_CAPS_ARCH_LATEST("hostdev-vfio-zpci", "s390x");
+    DO_TEST_CAPS_LATEST("hostdev-vfio-iommufd-intel-iommu");
     DO_TEST_CAPS_ARCH_LATEST_PARSE_ERROR("hostdev-vfio-zpci-invalid-uid-valid-fid", "s390x");
     DO_TEST_CAPS_ARCH_LATEST("hostdev-vfio-zpci-multidomain-many", "s390x");
     DO_TEST_CAPS_ARCH_LATEST("hostdev-vfio-zpci-autogenerate", "s390x");
