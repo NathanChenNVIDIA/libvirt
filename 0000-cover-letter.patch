@@ -1,0 +1,147 @@
+From d79289a85fc741e741922c6752b89892b6aad699 Mon Sep 17 00:00:00 2001
+From: Ian May <ianm@nvidia.com>
+Date: Tue, 15 Jul 2025 21:30:46 +0000
+Subject: [RFC PATCH 0/8] Add support for Grace ACPI Extended GPU Memory (EGM) devices
+
+The Grace SOC introduces Extended GPU Memory (EGM) [3], a feature that enables
+GPUs to efficiently access system memory within and across nodes. This patch
+series adds support for virtualizing EGM (vEGM) in libvirt, allowing VMs to
+utilize dedicated EGM memory regions through ACPI.
+
+RFC Status
+==========
+
+This patch series is submitted as an RFC to gather feedback from the libvirt
+community on the overall approach and implementation details. While kernel EGM
+driver support and QEMU acpi-egm-memory device support are not yet upstream,
+reference implementations are available [1][2] to enable testing and validation
+of the libvirt integration.
+
+Any community feedback is appreciated.
+
+Background and Use Cases
+=========================
+
+EGM allows host memory to be partitioned into two regions:
+1. Standard memory for Host OS usage
+2. EGM region assigned to VMs as their system memory
+
+This technology enables various high-performance computing scenarios [3]:
+- Large memory pools for AI/ML workloads
+- High-performance computing applications
+- Memory extension for systems with limited main memory
+- GPU-accelerated workloads requiring large addressable memory
+
+Implementation Overview
+=======================
+
+This 8-patch series adds a new device type 'acpi-egm-memory' with the following structure:
+
+1. Schema definition - Add XML schema definition for the new ACPI EGM memory device
+2. XML parsing - Implement XML parsing and internal data structures
+3. Capability detection - Add QEMU capability detection for EGM support
+4. Validation - Add validation logic for EGM device configuration
+5. Command generation - Implement QEMU command line generation
+6. Resource management - Setup required cgroup and namespace configurations
+7. Documentation - Add comprehensive documentation
+8. Testing - Add qemuxmlconftest for ACPI EGM memory device
+
+XML Configuration
+=================
+
+Example usage in domain XML:
+
+<devices>
+  <hostdev mode="subsystem" type="pci" managed="yes">
+    <alias name="ua-hostdev0"/>
+    <source>
+      <address domain="0x0000" bus="0x01" slot="0x00" function="0x0"/>
+    </source>
+  </hostdev>
+  <acpiEgmMemory>
+    <alias name="egm0"/>
+    <pciDev>ua-hostdev0</pciDev>
+    <numaNode>0</numaNode>
+  </acpiEgmMemory>
+</devices>
+
+This configuration results in appropriate QEMU command line options:
+-object memory-backend-file,id=m0,mem-path=/dev/egm0,size=32G,share=on,prealloc=on
+-object acpi-egm-memory,id=egm0,pci-dev=ua-hostdev0,node=0
+
+Implementation Notes
+====================
+
+The device validation includes checking that referenced PCI devices exist,
+NUMA nodes are valid, and device paths are accessible with proper permissions.
+Memory backing is configured automatically to use the EGM device path, and
+cgroups/namespaces are set up to allow safe access.
+
+Testing
+=======
+
+I've tested XML parsing, validation, and qemu command line generation. The
+qemuxmlconftest passes for XML handling, though the command generation test
+currently fails since QEMU doesn't have acpi-egm-memory support yet, but
+the generated args look correct for when it does.
+
+Requirements
+============
+
+This feature requires:
+- NVIDIA ARM64 Grace platform with EGM support
+- Host kernel with EGM driver support [1]
+- QEMU with ACPI EGM device support [2]
+
+[1] https://github.com/ianm-nv/NV-Kernels/tree/6.8_ghvirt_egm_may2025
+[2] https://github.com/ianm-nv/qemu/tree/6.8_ghvirt_egm_may2025
+[3] https://developer.nvidia.com/blog/nvidia-grace-hopper-superchip-architecture-in-depth/#extended_gpu_memory
+
+Ian May (8):
+  conf: Add schema definition for ACPI EGM memory device
+  conf: Add definitions and XML parsing for ACPI EGM memory device
+  qemu: Add capability detection for ACPI EGM memory device
+  qemu: add validation for pci dev and egm
+  qemu: Add command line generation for ACPI EGM memory device
+  qemu: Add cgroup and namespace setup for ACPI EGM memory device
+  docs: Document ACPI EGM memory device
+  tests: Add qemuxmlconftest for ACPI EGM memory device
+
+ docs/formatdomain.rst                         |  80 ++++++++++++++
+ src/ch/ch_domain.c                            |   1 +
+ src/conf/domain_conf.c                        | 102 ++++++++++++++++++
+ src/conf/domain_conf.h                        |  11 ++
+ src/conf/domain_postparse.c                   |   8 ++
+ src/conf/domain_validate.c                    |  23 ++++
+ src/conf/schemas/domaincommon.rng             |  19 ++++
+ src/conf/virconftypes.h                       |   2 +
+ src/libxl/libxl_driver.c                      |   6 ++
+ src/lxc/lxc_driver.c                          |   6 ++
+ src/qemu/qemu_capabilities.c                  |   2 +
+ src/qemu/qemu_capabilities.h                  |   1 +
+ src/qemu/qemu_cgroup.c                        |  21 ++++
+ src/qemu/qemu_command.c                       |  37 +++++++
+ src/qemu/qemu_domain.c                        |   2 +
+ src/qemu/qemu_domain_address.c                |   2 +
+ src/qemu/qemu_driver.c                        |   3 +
+ src/qemu/qemu_hotplug.c                       |   5 +
+ src/qemu/qemu_namespace.c                     |  21 ++++
+ src/qemu/qemu_postparse.c                     |   1 +
+ src/qemu/qemu_validate.c                      |  99 +++++++++++++++++
+ src/test/test_driver.c                        |   4 +
+ tests/meson.build                             |   1 +
+ .../caps_10.0.0_aarch64.xml                   |   1 +
+ tests/qemuegmmock.c                           |  67 ++++++++++++
+ .../acpi-egm-memory.aarch64-latest.args       |   1 +
+ .../acpi-egm-memory.aarch64-latest.xml        |  56 ++++++++++
+ tests/qemuxmlconfdata/acpi-egm-memory.xml     |  27 +++++
+ tests/qemuxmlconftest.c                       |   5 +-
+ 29 files changed, 613 insertions(+), 1 deletion(-)
+ create mode 100644 tests/qemuegmmock.c
+ create mode 100644 tests/qemuxmlconfdata/acpi-egm-memory.aarch64-latest.args
+ create mode 100644 tests/qemuxmlconfdata/acpi-egm-memory.aarch64-latest.xml
+ create mode 100644 tests/qemuxmlconfdata/acpi-egm-memory.xml
+
+--
+2.43.0
+
