@@ -1,0 +1,6 @@
+<cpus>
+  <model name='Grace'>
+    <vendor name='NVIDIA'/>
+    <pvr value='0xd4f'/>
+  </model>
+</cpus>
