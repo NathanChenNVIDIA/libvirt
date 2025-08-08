@@ -1172,3 +1172,6 @@ qemuDomainCheckCPU(virArch arch,
 bool
 qemuDomainMachineSupportsFloppy(const char *machine,
                                 virQEMUCaps *qemuCaps);
+
+int qemuProcessOpenVfioFds(virDomainObj *vm);
+void qemuProcessCloseVfioFds(virDomainObj *vm);

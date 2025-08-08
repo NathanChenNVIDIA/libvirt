@@ -62,6 +62,7 @@ qemuFDPassTransferMonitorRollback(qemuFDPass *fdpass,
 const char *
 qemuFDPassGetPath(qemuFDPass *fdpass);
 
+int qemuFDPassGetFD(qemuFDPass *fdpass, size_t idx);
 
 typedef struct _qemuFDPassDirect qemuFDPassDirect;
 
