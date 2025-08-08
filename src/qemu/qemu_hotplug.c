@@ -1633,7 +1633,7 @@ qemuDomainAttachHostPCIDevice(virQEMUDriver *driver,
         goto error;
     }
 
-    if (!(devprops = qemuBuildPCIHostdevDevProps(vm->def, hostdev)))
+    if (!(devprops = qemuBuildPCIHostdevDevProps(vm->def, hostdev, vm)))
         goto error;
 
     qemuDomainObjEnterMonitor(vm);

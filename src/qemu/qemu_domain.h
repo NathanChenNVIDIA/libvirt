@@ -266,6 +266,8 @@ struct _qemuDomainObjPrivate {
     /* named file descriptor groups associated with the VM */
     GHashTable *fds;
 
+    GHashTable *fdpasses;
+
     char *memoryBackingDir;
 };
 
@@ -1172,3 +1174,6 @@ qemuDomainCheckCPU(virArch arch,
 bool
 qemuDomainMachineSupportsFloppy(const char *machine,
                                 virQEMUCaps *qemuCaps);
+
+int qemuProcessOpenVfioFds(virDomainObj *vm);
+void qemuProcessCloseVfioFds(virDomainObj *vm);

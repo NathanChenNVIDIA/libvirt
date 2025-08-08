@@ -509,3 +509,22 @@ qemuFDPassDirectGetPath(qemuFDPassDirect *fdpass)
 
     return fdpass->name;
 }
+
+
+/**
+ * qemuFDPassGetFD:
+ * @fdpass: qemuFDPass object
+ * @idx: index of the FD to retrieve (0 for first FD)
+ *
+ * Gets the file descriptor at the specified index from a qemuFDPass object.
+ *
+ * Returns: file descriptor number, or -1 if not found
+ */
+int
+qemuFDPassGetFD(qemuFDPass *fdpass, size_t idx)
+{
+    if (!fdpass || idx >= fdpass->nfds)
+        return -1;
+
+    return fdpass->fds[idx].fd;
+}

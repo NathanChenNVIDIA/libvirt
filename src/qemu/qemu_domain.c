@@ -1975,6 +1975,7 @@ qemuDomainObjPrivateFree(void *data)
 
     g_clear_pointer(&priv->blockjobs, g_hash_table_unref);
     g_clear_pointer(&priv->fds, g_hash_table_unref);
+    g_clear_pointer(&priv->fdpasses, g_hash_table_unref);
 
     /* This should never be non-NULL if we get here, but just in case... */
     if (priv->eventThread) {
@@ -2003,6 +2004,7 @@ qemuDomainObjPrivateAlloc(void *opaque)
 
     priv->blockjobs = virHashNew(virObjectUnref);
     priv->fds = virHashNew(g_object_unref);
+    priv->fdpasses = virHashNew((GDestroyNotify) qemuFDPassFree);
 
     priv->pidMonitored = -1;
 
