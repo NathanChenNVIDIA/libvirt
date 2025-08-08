@@ -4797,7 +4797,8 @@ qemuBuildVideoCommandLine(virCommand *cmd,
 
 virJSONValue *
 qemuBuildPCIHostdevDevProps(const virDomainDef *def,
-                            virDomainHostdevDef *dev)
+                            virDomainHostdevDef *dev,
+                            virDomainObj *vm)
 {
     g_autoptr(virJSONValue) props = NULL;
     virDomainHostdevSubsysPCI *pcisrc = &dev->source.subsys.u.pci;
@@ -4807,6 +4808,13 @@ qemuBuildPCIHostdevDevProps(const virDomainDef *def,
     const char *driver = NULL;
     /* 'ramfb' property must be omitted unless it's to be enabled */
     bool ramfb = pcisrc->ramfb == VIR_TRISTATE_SWITCH_ON;
+    bool useIommufd = false;
+    qemuDomainObjPrivate *priv = vm ? vm->privateData : NULL;
+
+    if (pcisrc->driver.name == VIR_DEVICE_HOSTDEV_PCI_DRIVER_NAME_VFIO &&
+        dev->iommufdId) {
+        useIommufd = true;
+    }
 
     /* caller has to assign proper passthrough driver name */
     switch (pcisrc->driver.name) {
@@ -4849,6 +4857,18 @@ qemuBuildPCIHostdevDevProps(const virDomainDef *def,
                               "S:iommufd", dev->iommufdId,
                               NULL) < 0)
         return NULL;
+
+    if (useIommufd && priv) {
+        g_autofree char *vfioFdName = g_strdup_printf("vfio-%04x:%02x:%02x.%d",
+                                                      pcisrc->addr.domain, pcisrc->addr.bus,
+                                                      pcisrc->addr.slot, pcisrc->addr.function);
+
+        int vfiofd = GPOINTER_TO_INT(g_hash_table_lookup(priv->vfioDeviceFds, vfioFdName));
+        if (virJSONValueObjectAdd(&props,
+                                  "S:fd", g_strdup_printf("%d", vfiofd),
+                                  NULL) < 0)
+            return NULL;
+    }
 
     if (qemuBuildDeviceAddressProps(props, def, dev->info) < 0)
         return NULL;
@@ -5223,11 +5243,13 @@ qemuBuildHostdevSCSICommandLine(virCommand *cmd,
 static int
 qemuBuildHostdevCommandLine(virCommand *cmd,
                             const virDomainDef *def,
-                            virQEMUCaps *qemuCaps)
+                            virQEMUCaps *qemuCaps,
+                            virDomainObj *vm)
 {
     size_t i;
     g_autoptr(virJSONValue) props = NULL;
     int iommufd = 0;
+    qemuDomainObjPrivate *priv = vm->privateData;
 
     for (i = 0; i < def->nhostdevs; i++) {
         virDomainHostdevDef *hostdev = def->hostdevs[i];
@@ -5239,8 +5261,11 @@ qemuBuildHostdevCommandLine(virCommand *cmd,
 
         if (hostdev->iommufdId && iommufd == 0) {
             iommufd = 1;
+            virCommandPassFD(cmd, priv->iommufd, VIR_COMMAND_PASS_FD_CLOSE_PARENT);
+
             if (qemuMonitorCreateObjectProps(&props, "iommufd",
                                              hostdev->iommufdId,
+                                             "S:fd", g_strdup_printf("%d", priv->iommufd),
                                              NULL) < 0)
                 return -1;
 
@@ -5270,7 +5295,18 @@ qemuBuildHostdevCommandLine(virCommand *cmd,
             if (qemuCommandAddExtDevice(cmd, hostdev->info, def, qemuCaps) < 0)
                 return -1;
 
-            if (!(devprops = qemuBuildPCIHostdevDevProps(def, hostdev)))
+            if (hostdev->iommufdId) {
+                virDomainHostdevSubsysPCI *pcisrc = &hostdev->source.subsys.u.pci;
+                g_autofree char *vfioFdName = g_strdup_printf("vfio-%04x:%02x:%02x.%d",
+                                                              pcisrc->addr.domain, pcisrc->addr.bus,
+                                                              pcisrc->addr.slot, pcisrc->addr.function);
+
+                int vfiofd = GPOINTER_TO_INT(g_hash_table_lookup(priv->vfioDeviceFds, vfioFdName));
+
+                virCommandPassFD(cmd, vfiofd, VIR_COMMAND_PASS_FD_CLOSE_PARENT);
+            }
+
+            if (!(devprops = qemuBuildPCIHostdevDevProps(def, hostdev, vm)))
                 return -1;
 
             if (qemuBuildDeviceCommandlineFromJSON(cmd, devprops, def, qemuCaps) < 0)
@@ -10960,7 +10996,7 @@ qemuBuildCommandLine(virDomainObj *vm,
     if (qemuBuildRedirdevCommandLine(cmd, def, qemuCaps) < 0)
         return NULL;
 
-    if (qemuBuildHostdevCommandLine(cmd, def, qemuCaps) < 0)
+    if (qemuBuildHostdevCommandLine(cmd, def, qemuCaps, vm) < 0)
         return NULL;
 
     if (migrateURI)

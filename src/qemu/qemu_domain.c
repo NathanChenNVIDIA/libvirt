@@ -1954,6 +1954,11 @@ qemuDomainObjPrivateFree(void *data)
 
     virChrdevFree(priv->devs);
 
+    if (priv->iommufd >= 0) {
+        virEventRemoveHandle(priv->iommufd);
+        priv->iommufd = -1;
+    }
+
     if (priv->pidMonitored >= 0) {
         virEventRemoveHandle(priv->pidMonitored);
         priv->pidMonitored = -1;
@@ -1975,6 +1980,7 @@ qemuDomainObjPrivateFree(void *data)
 
     g_clear_pointer(&priv->blockjobs, g_hash_table_unref);
     g_clear_pointer(&priv->fds, g_hash_table_unref);
+    g_clear_pointer(&priv->vfioDeviceFds, g_hash_table_unref);
 
     /* This should never be non-NULL if we get here, but just in case... */
     if (priv->eventThread) {
@@ -2003,7 +2009,9 @@ qemuDomainObjPrivateAlloc(void *opaque)
 
     priv->blockjobs = virHashNew(virObjectUnref);
     priv->fds = virHashNew(g_object_unref);
+    priv->vfioDeviceFds = g_hash_table_new(g_str_hash, g_str_equal);
 
+    priv->iommufd = -1;
     priv->pidMonitored = -1;
 
     /* agent commands block by default, user can choose different behavior */
