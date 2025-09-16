@@ -4756,6 +4756,12 @@ qemuBuildPCIHostdevDevProps(const virDomainDef *def,
     const char *iommufdId = NULL;
     /* 'ramfb' property must be omitted unless it's to be enabled */
     bool ramfb = pcisrc->ramfb == VIR_TRISTATE_SWITCH_ON;
+    bool useIommufd = false;
+
+    if (pcisrc->driver.name == VIR_DEVICE_HOSTDEV_PCI_DRIVER_NAME_VFIO &&
+        pcisrc->driver.iommufd == VIR_TRISTATE_BOOL_YES) {
+        useIommufd = true;
+    }
 
     /* caller has to assign proper passthrough driver name */
     switch (pcisrc->driver.name) {
@@ -4801,6 +4807,17 @@ qemuBuildPCIHostdevDevProps(const virDomainDef *def,
                               "S:iommufd", iommufdId,
                               NULL) < 0)
         return NULL;
+
+    if (useIommufd && dev->privateData) {
+        qemuDomainHostdevPrivate *hostdevPriv = QEMU_DOMAIN_HOSTDEV_PRIVATE(dev);
+
+        if (hostdevPriv->vfioDeviceFd >= 0) {
+            if (virJSONValueObjectAdd(&props,
+                                      "S:fd", g_strdup_printf("%d", hostdevPriv->vfioDeviceFd),
+                                      NULL) < 0)
+                return NULL;
+        }
+    }
 
     if (qemuBuildDeviceAddressProps(props, def, dev->info) < 0)
         return NULL;
@@ -5259,6 +5276,15 @@ qemuBuildHostdevCommandLine(virCommand *cmd,
 
             if (qemuCommandAddExtDevice(cmd, hostdev->info, def, qemuCaps) < 0)
                 return -1;
+
+            if (subsys->u.pci.driver.iommufd == VIR_TRISTATE_BOOL_YES) {
+                qemuDomainHostdevPrivate *hostdevPriv = QEMU_DOMAIN_HOSTDEV_PRIVATE(hostdev);
+
+                if (hostdevPriv && hostdevPriv->vfioDeviceFd >= 0) {
+                    virCommandPassFD(cmd, hostdevPriv->vfioDeviceFd,
+                                     VIR_COMMAND_PASS_FD_CLOSE_PARENT);
+                }
+            }
 
             if (!(devprops = qemuBuildPCIHostdevDevProps(def, hostdev)))
                 return -1;

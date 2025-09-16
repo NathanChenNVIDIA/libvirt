@@ -3159,6 +3159,7 @@ virPCIDeviceGetStubDriverName;
 virPCIDeviceGetStubDriverType;
 virPCIDeviceGetUnbindFromStub;
 virPCIDeviceGetUsedBy;
+virPCIDeviceGetVfioPath;
 virPCIDeviceGetVPD;
 virPCIDeviceHasPCIExpressLink;
 virPCIDeviceIsAssignable;

@@ -364,6 +364,8 @@ struct _virDomainHostdevDef {
      */
     virDomainNetDef *parentnet;
 
+    virObject *privateData;
+
     virDomainHostdevMode mode;
     virDomainStartupPolicy startupPolicy;
     bool managed;
