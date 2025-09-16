@@ -106,6 +106,7 @@
 
 #include "logging/log_manager.h"
 #include "logging/log_protocol.h"
+#include "util/virpci.h"
 
 #define VIR_FROM_THIS VIR_FROM_QEMU
 
@@ -8093,6 +8094,9 @@ qemuProcessLaunch(virConnectPtr conn,
     if (qemuExtDevicesStart(driver, vm, incomingMigrationExtDevices) < 0)
         goto cleanup;
 
+    if (qemuProcessOpenVfioFds(vm) < 0)
+        goto cleanup;
+
     if (!(cmd = qemuBuildCommandLine(vm,
                                      incoming ? "defer" : NULL,
                                      vmop,
@@ -10273,4 +10277,130 @@ qemuProcessHandleNbdkitExit(qemuNbdkitProcess *nbdkit,
     VIR_DEBUG("nbdkit process %i died", nbdkit->pid);
     qemuProcessEventSubmit(vm, QEMU_PROCESS_EVENT_NBDKIT_EXITED, 0, 0, nbdkit);
     virObjectUnlock(vm);
+}
+
+/**
+ * qemuProcessOpenVfioDeviceFd:
+ * @hostdev: host device definition
+ * @vfioFd: returned file descriptor
+ *
+ * Opens the VFIO device file descriptor for a hostdev.
+ *
+ * Returns: 0 on success, -1 on failure
+ */
+static int
+qemuProcessOpenVfioDeviceFd(virDomainHostdevDef *hostdev,
+                            int *vfioFd)
+{
+    g_autofree char *vfioPath = NULL;
+    int fd = -1;
+
+
+    if (hostdev->mode != VIR_DOMAIN_HOSTDEV_MODE_SUBSYS ||
+        hostdev->source.subsys.type != VIR_DOMAIN_HOSTDEV_SUBSYS_TYPE_PCI) {
+        virReportError(VIR_ERR_INTERNAL_ERROR, "%s",
+                       _("VFIO FD only supported for PCI hostdevs"));
+        return -1;
+    }
+
+    if (virPCIDeviceGetVfioPath(&hostdev->source.subsys.u.pci.addr, &vfioPath) < 0)
+        return -1;
+
+    VIR_DEBUG("Opening VFIO device %s", vfioPath);
+
+    if ((fd = open(vfioPath, O_RDWR | O_CLOEXEC)) < 0) {
+        if (errno == ENOENT) {
+            virReportError(VIR_ERR_CONFIG_UNSUPPORTED,
+                           _("VFIO device %1$s not found - ensure device is bound to vfio-pci driver"),
+                           vfioPath);
+        } else {
+            virReportSystemError(errno,
+                                 _("cannot open VFIO device %1$s"), vfioPath);
+        }
+        return -1;
+    }
+
+    *vfioFd = fd;
+    VIR_DEBUG("Opened VFIO device FD %d for %s", *vfioFd, vfioPath);
+    return 0;
+}
+
+/**
+ * qemuProcessOpenVfioFds:
+ * @vm: domain object
+ *
+ * Opens all necessary VFIO file descriptors for the domain.
+ *
+ * Returns: 0 on success, -1 on failure
+ */
+int
+qemuProcessOpenVfioFds(virDomainObj *vm)
+{
+    size_t i;
+
+    /* Check if we have any hostdevs that need VFIO FDs */
+    for (i = 0; i < vm->def->nhostdevs; i++) {
+        virDomainHostdevDef *hostdev = vm->def->hostdevs[i];
+        qemuDomainHostdevPrivate *hostdevPriv = NULL;
+
+        if (hostdev->mode == VIR_DOMAIN_HOSTDEV_MODE_SUBSYS &&
+            hostdev->source.subsys.type == VIR_DOMAIN_HOSTDEV_SUBSYS_TYPE_PCI) {
+
+            if (hostdev->source.subsys.u.pci.driver.name == VIR_DEVICE_HOSTDEV_PCI_DRIVER_NAME_VFIO &&
+                hostdev->source.subsys.u.pci.driver.iommufd == VIR_TRISTATE_BOOL_YES) {
+
+                if (!hostdev->privateData) {
+                    if (!(hostdev->privateData = qemuDomainHostdevPrivateNew()))
+                        goto error;
+                }
+
+                hostdevPriv = QEMU_DOMAIN_HOSTDEV_PRIVATE(hostdev);
+
+                /* Open VFIO device FD */
+                if (qemuProcessOpenVfioDeviceFd(hostdev, &hostdevPriv->vfioDeviceFd) < 0)
+                    goto error;
+
+                VIR_DEBUG("Stored VFIO FD %d in hostdev %04x:%02x:%02x.%d private data",
+                         hostdevPriv->vfioDeviceFd,
+                         hostdev->source.subsys.u.pci.addr.domain,
+                         hostdev->source.subsys.u.pci.addr.bus,
+                         hostdev->source.subsys.u.pci.addr.slot,
+                         hostdev->source.subsys.u.pci.addr.function);
+            }
+        }
+    }
+
+    return 0;
+
+ error:
+    qemuProcessCloseVfioFds(vm);
+    return -1;
+}
+
+/**
+ * qemuProcessCloseVfioFds:
+ * @vm: domain object
+ *
+ * Closes all VFIO file descriptors for the domain.
+ */
+void
+qemuProcessCloseVfioFds(virDomainObj *vm)
+{
+    size_t i;
+
+    /* Close all VFIO device FDs */
+    for (i = 0; i < vm->def->nhostdevs; i++) {
+        virDomainHostdevDef *hostdev = vm->def->hostdevs[i];
+        qemuDomainHostdevPrivate *hostdevPriv;
+
+        if (!hostdev->privateData)
+            continue;
+
+        hostdevPriv = QEMU_DOMAIN_HOSTDEV_PRIVATE(hostdev);
+
+        if (hostdevPriv->vfioDeviceFd >= 0) {
+            VIR_DEBUG("Closing VFIO device FD %d", hostdevPriv->vfioDeviceFd);
+            VIR_FORCE_CLOSE(hostdevPriv->vfioDeviceFd);
+        }
+    }
 }
