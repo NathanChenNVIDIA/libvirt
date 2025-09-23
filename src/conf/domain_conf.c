@@ -14419,6 +14419,10 @@ virDomainIOMMUDefParseXML(virDomainXMLOption *xmlopt,
                                &iommu->accel) < 0)
         return NULL;
 
+    if (virXMLPropTristateSwitch(node, "cmdqv", VIR_XML_PROP_NONE,
+                               &iommu->cmdqv) < 0)
+        return NULL;
+
     if ((driver = virXPathNode("./driver", ctxt))) {
         if (virXMLPropTristateSwitch(driver, "intremap", VIR_XML_PROP_NONE,
                                      &iommu->intremap) < 0)
@@ -16504,6 +16508,7 @@ virDomainIOMMUDefEquals(const virDomainIOMMUDef *a,
         a->aw_bits != b->aw_bits ||
         a->parent_idx != b->parent_idx ||
         a->accel != b->accel ||
+        a->cmdqv != b->cmdqv ||
         a->dma_translation != b->dma_translation)
         return false;
 
@@ -22161,6 +22166,12 @@ virDomainIOMMUDefCheckABIStability(virDomainIOMMUDef *src,
         virReportError(VIR_ERR_CONFIG_UNSUPPORTED,
                        _("Target domain IOMMU device accel value '%1$d' does not match source '%2$d'"),
                        dst->accel, src->accel);
+        return false;
+    }
+    if (src->cmdqv != dst->cmdqv) {
+        virReportError(VIR_ERR_CONFIG_UNSUPPORTED,
+                       _("Target domain IOMMU device cmdqv value '%1$d' does not match source '%2$d'"),
+                       dst->cmdqv, src->cmdqv);
         return false;
     }
     if (src->dma_translation != dst->dma_translation) {
@@ -28499,6 +28510,10 @@ virDomainIOMMUDefFormat(virBuffer *buf,
         if (iommu->accel != VIR_TRISTATE_SWITCH_ABSENT) {
             virBufferAsprintf(&attrBuf, " accel='%s'",
                               virTristateSwitchTypeToString(iommu->accel));
+        }
+        if (iommu->cmdqv != VIR_TRISTATE_SWITCH_ABSENT) {
+            virBufferAsprintf(&attrBuf, " cmdqv='%s'",
+                              virTristateSwitchTypeToString(iommu->cmdqv));
         }
     }
 

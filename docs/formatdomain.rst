@@ -9181,6 +9181,11 @@ Example:
    The ``accel`` attribute with possible values ``on`` and ``off`` can be used
    to enable hardware acceleration support for smmuv3Dev IOMMU devices.
 
+``cmdqv``
+   The ``cmdqv`` attribute with possibel values ``on`` and ``off`` can be used
+   to enable NVIDIA Tegra241 CMDQV, an extension for ARM SMMUv3 that supports
+   passthrough of physical SMMU-CMDQ linked command queue from host space to VM.
+
 ``driver``
    The ``driver`` subelement can be used to configure additional options, some
    of which might only be available for certain IOMMU models:

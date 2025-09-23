@@ -6403,6 +6403,7 @@ qemuBuildPCISmmuv3DevDevProps(const virDomainDef *def,
                               "s:primary-bus", bus,
                               "s:id", smmuv3_id,
                               "b:accel", (iommu->accel == VIR_TRISTATE_SWITCH_ON),
+                              "B:cmdqv", (iommu->cmdqv == VIR_TRISTATE_SWITCH_ON),
                               NULL) < 0)
         return NULL;
 

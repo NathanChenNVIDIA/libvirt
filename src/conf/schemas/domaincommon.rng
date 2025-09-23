@@ -6279,6 +6279,11 @@
           <ref name="virOnOff"/>
         </attribute>
       </optional>
+      <optional>
+        <attribute name="cmdqv">
+          <ref name="virOnOff"/>
+        </attribute>
+      </optional>
       <interleave>
         <optional>
           <element name="driver">

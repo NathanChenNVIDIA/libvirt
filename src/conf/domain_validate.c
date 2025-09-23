@@ -3119,7 +3119,8 @@ virDomainIOMMUDefValidate(const virDomainIOMMUDef *iommu)
             iommu->iotlb != VIR_TRISTATE_SWITCH_ABSENT ||
             iommu->aw_bits != 0 ||
             iommu->dma_translation != VIR_TRISTATE_SWITCH_ABSENT ||
-            iommu->accel != VIR_TRISTATE_SWITCH_ABSENT) {
+            iommu->accel != VIR_TRISTATE_SWITCH_ABSENT ||
+            iommu->cmdqv != VIR_TRISTATE_SWITCH_ABSENT) {
             virReportError(VIR_ERR_XML_ERROR,
                            _("iommu model '%1$s' doesn't support additional attributes"),
                            virDomainIOMMUModelTypeToString(iommu->model));
@@ -3132,7 +3133,8 @@ virDomainIOMMUDefValidate(const virDomainIOMMUDef *iommu)
             iommu->eim != VIR_TRISTATE_SWITCH_ABSENT ||
             iommu->aw_bits != 0 ||
             iommu->dma_translation != VIR_TRISTATE_SWITCH_ABSENT ||
-            iommu->accel != VIR_TRISTATE_SWITCH_ABSENT) {
+            iommu->accel != VIR_TRISTATE_SWITCH_ABSENT ||
+            iommu->cmdqv != VIR_TRISTATE_SWITCH_ABSENT) {
             virReportError(VIR_ERR_XML_ERROR,
                            _("iommu model '%1$s' doesn't support some additional attributes"),
                            virDomainIOMMUModelTypeToString(iommu->model));
@@ -3143,7 +3145,8 @@ virDomainIOMMUDefValidate(const virDomainIOMMUDef *iommu)
     case VIR_DOMAIN_IOMMU_MODEL_INTEL:
         if (iommu->pt != VIR_TRISTATE_SWITCH_ABSENT ||
             iommu->xtsup != VIR_TRISTATE_SWITCH_ABSENT ||
-            iommu->accel != VIR_TRISTATE_SWITCH_ABSENT) {
+            iommu->accel != VIR_TRISTATE_SWITCH_ABSENT ||
+            iommu->cmdqv != VIR_TRISTATE_SWITCH_ABSENT) {
             virReportError(VIR_ERR_XML_ERROR,
                            _("iommu model '%1$s' doesn't support some additional attributes"),
                            virDomainIOMMUModelTypeToString(iommu->model));
