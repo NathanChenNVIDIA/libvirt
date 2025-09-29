@@ -6296,10 +6296,12 @@ qemuBuildBootCommandLine(virCommand *cmd,
 
 static virJSONValue *
 qemuBuildPCISmmuv3DevDevProps(const virDomainDef *def,
-                              const virDomainIOMMUDef *iommu)
+                              const virDomainIOMMUDef *iommu,
+                              size_t id)
 {
     g_autoptr(virJSONValue) props = NULL;
     g_autofree char *bus = NULL;
+    g_autofree char *smmuv3_id = NULL;
     size_t i;
     bool contIsPHB = false;
 
@@ -6340,9 +6342,12 @@ qemuBuildPCISmmuv3DevDevProps(const virDomainDef *def,
         bus = temp_bus;
     }
 
+    smmuv3_id = g_strdup_printf("smmuv3.%zu", id);
+
     if (virJSONValueObjectAdd(&props,
                               "s:driver", "arm-smmuv3",
-                              "S:primary-bus", bus,
+                              "s:primary-bus", bus,
+                              "s:id", smmuv3_id,
                               "b:accel", (iommu->accel == VIR_TRISTATE_SWITCH_ON),
                               "b:ats", (iommu->ats == VIR_TRISTATE_SWITCH_ON),
                               "b:ril", (iommu->ril == VIR_TRISTATE_SWITCH_ON),
@@ -6366,91 +6371,92 @@ qemuBuildIOMMUCommandLine(virCommand *cmd,
                           const virDomainDef *def,
                           virQEMUCaps *qemuCaps)
 {
+    size_t i;
     g_autoptr(virJSONValue) props = NULL;
     g_autoptr(virJSONValue) wrapperProps = NULL;
-    const virDomainIOMMUDef *iommu = def->iommu;
-
-    if (!iommu)
+    if (!def->iommu || def->niommus <= 0)
         return 0;
 
-    switch (iommu->model) {
-    case VIR_DOMAIN_IOMMU_MODEL_INTEL:
-        if (virJSONValueObjectAdd(&props,
-                                  "s:driver", "intel-iommu",
-                                  "s:id", iommu->info.alias,
-                                  "S:intremap", qemuOnOffAuto(iommu->intremap),
-                                  "T:caching-mode", iommu->caching_mode,
-                                  "S:eim", qemuOnOffAuto(iommu->eim),
-                                  "T:device-iotlb", iommu->iotlb,
-                                  "z:aw-bits", iommu->aw_bits,
-                                  "T:dma-translation", iommu->dma_translation,
-                                  NULL) < 0)
-            return -1;
+    for (i = 0; i < def->niommus; i++) {
+        virDomainIOMMUDef *iommu = def->iommu[i];
+        switch (iommu->model) {
+        case VIR_DOMAIN_IOMMU_MODEL_INTEL:
+            if (virJSONValueObjectAdd(&props,
+                                      "s:driver", "intel-iommu",
+                                      "s:id", iommu->info.alias,
+                                      "S:intremap", qemuOnOffAuto(iommu->intremap),
+                                      "T:caching-mode", iommu->caching_mode,
+                                      "S:eim", qemuOnOffAuto(iommu->eim),
+                                      "T:device-iotlb", iommu->iotlb,
+                                      "z:aw-bits", iommu->aw_bits,
+                                      "T:dma-translation", iommu->dma_translation,
+                                      NULL) < 0)
+                return -1;
 
-        if (qemuBuildDeviceCommandlineFromJSON(cmd, props, def, qemuCaps) < 0)
-            return -1;
+            if (qemuBuildDeviceCommandlineFromJSON(cmd, props, def, qemuCaps) < 0)
+                return -1;
 
-        return 0;
+            return 0;
+        case VIR_DOMAIN_IOMMU_MODEL_VIRTIO:
+            if (virJSONValueObjectAdd(&props,
+                                      "s:driver", "virtio-iommu",
+                                      "s:id", iommu->info.alias,
+                                      NULL) < 0) {
+                return -1;
+            }
 
-    case VIR_DOMAIN_IOMMU_MODEL_VIRTIO:
-        if (virJSONValueObjectAdd(&props,
-                                  "s:driver", "virtio-iommu",
-                                  "s:id", iommu->info.alias,
-                                  NULL) < 0) {
+            if (qemuBuildDeviceAddressProps(props, def, &iommu->info) < 0)
+                return -1;
+
+            if (qemuBuildDeviceCommandlineFromJSON(cmd, props, def, qemuCaps) < 0)
+                return -1;
+
+            return 0;
+        case VIR_DOMAIN_IOMMU_MODEL_SMMUV3:
+            /* There is no -device for SMMUv3, so nothing to be done here */
+            return 0;
+
+        case VIR_DOMAIN_IOMMU_MODEL_AMD:
+            if (virJSONValueObjectAdd(&wrapperProps,
+                                      "s:driver", "AMDVI-PCI",
+                                      "s:id", iommu->info.alias,
+                                      NULL) < 0)
+                return -1;
+
+            if (qemuBuildDeviceAddressProps(wrapperProps, def, &iommu->info) < 0)
+                return -1;
+
+            if (qemuBuildDeviceCommandlineFromJSON(cmd, wrapperProps, def, qemuCaps) < 0)
+                return -1;
+
+            if (virJSONValueObjectAdd(&props,
+                                      "s:driver", "amd-iommu",
+                                      "s:pci-id", iommu->info.alias,
+                                      "S:intremap", qemuOnOffAuto(iommu->intremap),
+                                      "T:pt", iommu->pt,
+                                      "T:xtsup", iommu->xtsup,
+                                      "T:device-iotlb", iommu->iotlb,
+                                      NULL) < 0)
+                return -1;
+
+            if (qemuBuildDeviceCommandlineFromJSON(cmd, props, def, qemuCaps) < 0)
+                return -1;
+
+            return 0;
+
+        case VIR_DOMAIN_IOMMU_MODEL_SMMUV3_DEV:
+            if (!(props = qemuBuildPCISmmuv3DevDevProps(def, iommu, i)))
+                return -1;
+            if (qemuBuildDeviceCommandlineFromJSON(cmd, props, def, qemuCaps) < 0)
+                return -1;
+            break;
+
+
+        case VIR_DOMAIN_IOMMU_MODEL_LAST:
+        default:
+            virReportEnumRangeError(virDomainIOMMUModel, iommu->model);
             return -1;
         }
-
-        if (qemuBuildDeviceAddressProps(props, def, &iommu->info) < 0)
-            return -1;
-
-        if (qemuBuildDeviceCommandlineFromJSON(cmd, props, def, qemuCaps) < 0)
-            return -1;
-
-        return 0;
-
-    case VIR_DOMAIN_IOMMU_MODEL_SMMUV3:
-        return 0;
-
-    case VIR_DOMAIN_IOMMU_MODEL_AMD:
-        if (virJSONValueObjectAdd(&wrapperProps,
-                                  "s:driver", "AMDVI-PCI",
-                                  "s:id", iommu->info.alias,
-                                  NULL) < 0)
-            return -1;
-
-        if (qemuBuildDeviceAddressProps(wrapperProps, def, &iommu->info) < 0)
-            return -1;
-
-        if (qemuBuildDeviceCommandlineFromJSON(cmd, wrapperProps, def, qemuCaps) < 0)
-            return -1;
-
-        if (virJSONValueObjectAdd(&props,
-                                  "s:driver", "amd-iommu",
-                                  "s:pci-id", iommu->info.alias,
-                                  "S:intremap", qemuOnOffAuto(iommu->intremap),
-                                  "T:pt", iommu->pt,
-                                  "T:xtsup", iommu->xtsup,
-                                  "T:device-iotlb", iommu->iotlb,
-                                  NULL) < 0)
-            return -1;
-
-        if (qemuBuildDeviceCommandlineFromJSON(cmd, props, def, qemuCaps) < 0)
-            return -1;
-
-        return 0;
-
-    case VIR_DOMAIN_IOMMU_MODEL_SMMUV3_DEV:
-        if (!(props = qemuBuildPCISmmuv3DevDevProps(def, iommu)))
-            return -1;
-        if (qemuBuildDeviceCommandlineFromJSON(cmd, props, def, qemuCaps) < 0)
-            return -1;
-
-        return 0;
-
-    case VIR_DOMAIN_IOMMU_MODEL_LAST:
-    default:
-        virReportEnumRangeError(virDomainIOMMUModel, iommu->model);
-        return -1;
     }
 
     return 0;
@@ -7271,8 +7277,8 @@ qemuBuildMachineCommandLine(virCommand *cmd,
     if (qemuAppendDomainFeaturesMachineParam(&buf, def, qemuCaps) < 0)
         return -1;
 
-    if (def->iommu) {
-        switch (def->iommu->model) {
+    if (def->iommu && def->niommus == 1) {
+        switch (def->iommu[0]->model) {
         case VIR_DOMAIN_IOMMU_MODEL_SMMUV3:
             virBufferAddLit(&buf, ",iommu=smmuv3");
             break;
@@ -7286,7 +7292,7 @@ qemuBuildMachineCommandLine(virCommand *cmd,
 
         case VIR_DOMAIN_IOMMU_MODEL_LAST:
         default:
-            virReportEnumRangeError(virDomainIOMMUModel, def->iommu->model);
+            virReportEnumRangeError(virDomainIOMMUModel, def->iommu[0]->model);
             return -1;
         }
     }
