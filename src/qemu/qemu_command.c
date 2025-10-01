@@ -6406,6 +6406,7 @@ qemuBuildPCISmmuv3DevDevProps(const virDomainDef *def,
                               "b:ats", (iommu->ats == VIR_TRISTATE_SWITCH_ON),
                               "b:ril", (iommu->ril == VIR_TRISTATE_SWITCH_ON),
                               "b:pasid", (iommu->pasid == VIR_TRISTATE_SWITCH_ON),
+                              "B:cmdqv", (iommu->cmdqv == VIR_TRISTATE_SWITCH_ON),
                               NULL) < 0)
         return NULL;
 

@@ -14468,6 +14468,10 @@ virDomainIOMMUDefParseXML(virDomainXMLOption *xmlopt,
         if (virXMLPropUInt(driver, "oas", 10, VIR_XML_PROP_NONE,
                            &iommu->oas) < 0)
             return NULL;
+
+        if (virXMLPropTristateSwitch(driver, "cmdqv", VIR_XML_PROP_NONE,
+                                     &iommu->cmdqv) < 0)
+            return NULL;
     }
 
     if (virDomainDeviceInfoParseXML(xmlopt, node, ctxt,
@@ -16525,6 +16529,7 @@ virDomainIOMMUDefEquals(const virDomainIOMMUDef *a,
         a->ril != b->ril ||
         a->pasid != b->pasid ||
         a->oas != b->oas ||
+        a->cmdqv != b->cmdqv ||
         a->dma_translation != b->dma_translation)
         return false;
 
@@ -22227,6 +22232,12 @@ virDomainIOMMUDefCheckABIStability(virDomainIOMMUDef *src,
         virReportError(VIR_ERR_CONFIG_UNSUPPORTED,
                        _("Target domain IOMMU device oas value '%1$d' does not match source '%2$d'"),
                        dst->oas, src->oas);
+        return false;
+    }
+    if (src->cmdqv != dst->cmdqv) {
+        virReportError(VIR_ERR_CONFIG_UNSUPPORTED,
+                       _("Target domain IOMMU device cmdqv value '%1$d' does not match source '%2$d'"),
+                       dst->cmdqv, src->cmdqv);
         return false;
     }
 
@@ -28550,6 +28561,10 @@ virDomainIOMMUDefFormat(virBuffer *buf,
     if (iommu->oas > 0) {
         virBufferAsprintf(&driverAttrBuf, " oas='%d'",
                           iommu->oas);
+    }
+    if (iommu->cmdqv != VIR_TRISTATE_SWITCH_ABSENT) {
+        virBufferAsprintf(&driverAttrBuf, " cmdqv='%s'",
+                          virTristateSwitchTypeToString(iommu->cmdqv));
     }
 
     virXMLFormatElement(&childBuf, "driver", &driverAttrBuf, NULL);

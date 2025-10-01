@@ -9252,6 +9252,11 @@ Example:
       The ``oas`` attribute sets the output address size in units of bits.
       (QEMU/KVM and ``smmuv3Dev`` model only)
 
+   ``cmdqv``
+      The ``cmdqv`` attribute with possibel values ``on`` and ``off`` can be used
+      to enable NVIDIA Tegra241 CMDQV, an extension for ARM SMMUv3 that supports
+      passthrough of physical SMMU-CMDQ linked command queue from host space to VM.
+
 The ``virtio`` IOMMU devices can further have ``address`` element as described
 in `Device addresses`_ (address has to by type of ``pci``).
 
