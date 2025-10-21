@@ -3053,6 +3053,7 @@ struct _virDomainIOMMUDef {
     virTristateSwitch eim;
     virTristateSwitch iotlb;
     unsigned int aw_bits;
+    int pci_bus;
     virDomainDeviceInfo info;
     virTristateSwitch dma_translation;
     virTristateSwitch xtsup;

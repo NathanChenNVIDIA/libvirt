@@ -2814,6 +2814,8 @@ virDomainIOMMUDefNew(void)
 
     iommu = g_new0(virDomainIOMMUDef, 1);
 
+    iommu->pci_bus = -1;
+
     return g_steal_pointer(&iommu);
 }
 
@@ -14474,6 +14476,10 @@ virDomainIOMMUDefParseXML(virDomainXMLOption *xmlopt,
         if (virXMLPropTristateSwitch(driver, "passthrough", VIR_XML_PROP_NONE,
                                      &iommu->pt) < 0)
             return NULL;
+
+        if (virXMLPropInt(driver, "pciBus", 10, VIR_XML_PROP_NONE,
+                          &iommu->pci_bus, -1) < 0)
+            return NULL;
     }
 
     if (virDomainDeviceInfoParseXML(xmlopt, node, ctxt,
@@ -16525,7 +16531,8 @@ virDomainIOMMUDefEquals(const virDomainIOMMUDef *a,
         a->eim != b->eim ||
         a->iotlb != b->iotlb ||
         a->aw_bits != b->aw_bits ||
-        a->dma_translation != b->dma_translation)
+        a->dma_translation != b->dma_translation ||
+        a->pci_bus != b->pci_bus)
         return false;
 
     if (a->info.type != VIR_DOMAIN_DEVICE_ADDRESS_TYPE_NONE &&
@@ -22169,6 +22176,12 @@ virDomainIOMMUDefCheckABIStability(virDomainIOMMUDef *src,
         virReportError(VIR_ERR_CONFIG_UNSUPPORTED,
                        _("Target domain IOMMU device aw_bits value '%1$d' does not match source '%2$d'"),
                        dst->aw_bits, src->aw_bits);
+        return false;
+    }
+    if (src->pci_bus != dst->pci_bus) {
+        virReportError(VIR_ERR_CONFIG_UNSUPPORTED,
+                       _("Target domain IOMMU device pci_bus value '%1$d' does not match source '%2$d'"),
+                       dst->pci_bus, src->pci_bus);
         return false;
     }
     if (src->dma_translation != dst->dma_translation) {
@@ -28489,6 +28502,10 @@ virDomainIOMMUDefFormat(virBuffer *buf,
     if (iommu->xtsup != VIR_TRISTATE_SWITCH_ABSENT) {
         virBufferAsprintf(&driverAttrBuf, " xtsup='%s'",
                           virTristateSwitchTypeToString(iommu->xtsup));
+    }
+    if (iommu->pci_bus >= 0) {
+        virBufferAsprintf(&driverAttrBuf, " pciBus='%d'",
+                          iommu->pci_bus);
     }
 
     virXMLFormatElement(&childBuf, "driver", &driverAttrBuf, NULL);
