@@ -6311,6 +6311,11 @@
                 <ref name="virOnOff"/>
               </attribute>
             </optional>
+            <optional>
+              <attribute name="pciBus">
+                <data type="unsignedInt"/>
+              </attribute>
+            </optional>
           </element>
         </optional>
         <optional>
