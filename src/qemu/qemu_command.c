@@ -6222,6 +6222,62 @@ qemuBuildBootCommandLine(virCommand *cmd,
 }
 
 
+static virJSONValue *
+qemuBuildPCINestedSmmuv3DevProps(const virDomainDef *def,
+                                 const virDomainIOMMUDef *iommu,
+                                 size_t id)
+{
+    g_autoptr(virJSONValue) props = NULL;
+    g_autofree char *bus = NULL;
+    g_autofree char *smmuv3_id = NULL;
+    size_t i;
+
+    for (i = 0; i < def->ncontrollers; i++) {
+        virDomainControllerDef *cont = def->controllers[i];
+        if (cont->idx == iommu->pci_bus) {
+            if (cont->type == VIR_DOMAIN_CONTROLLER_TYPE_PCI) {
+                const char *alias = cont->info.alias;
+
+                if (!alias)
+                    return NULL;
+
+                if (virDomainDeviceAliasIsUserAlias(alias)) {
+                    if (cont->model == VIR_DOMAIN_CONTROLLER_MODEL_PCI_ROOT &&
+                        iommu->pci_bus == 0) {
+                        if (qemuDomainSupportsPCIMultibus(def))
+                            bus = g_strdup("pci.0");
+                        else
+                            bus = g_strdup("pci");
+                    } else if (cont->model == VIR_DOMAIN_CONTROLLER_MODEL_PCIE_ROOT) {
+                        bus = g_strdup("pcie.0");
+                    }
+                } else {
+                    bus = g_strdup(alias);
+                }
+                break;
+            }
+        }
+    }
+
+    if (!bus) {
+        virReportError(VIR_ERR_INTERNAL_ERROR, "%s",
+                        _("Could not find a suitable controller for smmuv3."));
+        return NULL;
+    }
+
+    smmuv3_id = g_strdup_printf("smmuv3.%zu", id);
+
+    if (virJSONValueObjectAdd(&props,
+                              "s:driver", "arm-smmuv3",
+                              "s:primary-bus", bus,
+                              "s:id", smmuv3_id,
+                              NULL) < 0)
+        return NULL;
+
+    return g_steal_pointer(&props);
+}
+
+
 static int
 qemuBuildIOMMUCommandLine(virCommand *cmd,
                           const virDomainDef *def,
@@ -6269,9 +6325,6 @@ qemuBuildIOMMUCommandLine(virCommand *cmd,
                 return -1;
 
             return 0;
-        case VIR_DOMAIN_IOMMU_MODEL_SMMUV3:
-            /* There is no -device for SMMUv3, so nothing to be done here */
-            return 0;
 
         case VIR_DOMAIN_IOMMU_MODEL_AMD:
             if (virJSONValueObjectAdd(&wrapperProps,
@@ -6300,6 +6353,17 @@ qemuBuildIOMMUCommandLine(virCommand *cmd,
                 return -1;
 
             return 0;
+
+        case VIR_DOMAIN_IOMMU_MODEL_SMMUV3:
+            if (iommu->pci_bus >= 0) {
+                if (!(props = qemuBuildPCINestedSmmuv3DevProps(def, iommu, i)))
+                    return -1;
+                if (qemuBuildDeviceCommandlineFromJSON(cmd, props, def, qemuCaps) < 0)
+                    return -1;
+                break;
+            } else {
+                return 0;
+            }
 
         case VIR_DOMAIN_IOMMU_MODEL_LAST:
         default:
@@ -10805,13 +10869,13 @@ qemuBuildCommandLine(virDomainObj *vm,
     if (qemuBuildBootCommandLine(cmd, def) < 0)
         return NULL;
 
-    if (qemuBuildIOMMUCommandLine(cmd, def, qemuCaps) < 0)
-        return NULL;
-
     if (qemuBuildGlobalControllerCommandLine(cmd, def) < 0)
         return NULL;
 
     if (qemuBuildControllersCommandLine(cmd, def, qemuCaps) < 0)
+        return NULL;
+
+    if (qemuBuildIOMMUCommandLine(cmd, def, qemuCaps) < 0)
         return NULL;
 
     if (qemuBuildMemoryDeviceCommandLine(cmd, cfg, def, priv) < 0)
