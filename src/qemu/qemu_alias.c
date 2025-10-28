@@ -553,6 +553,23 @@ qemuAssignDeviceMemoryAlias(virDomainDef *def,
     case VIR_DOMAIN_MEMORY_MODEL_SGX_EPC:
         prefix = "epc";
         break;
+    case VIR_DOMAIN_MEMORY_MODEL_EGM: {
+        const char *devname = NULL;
+        
+        if (mem->source.egm.path) {
+            devname = strrchr(mem->source.egm.path, '/');
+            if (devname)
+                devname++;
+            else
+                devname = mem->source.egm.path;
+            
+            mem->info.alias = g_strdup(devname);
+            return 0;
+        }
+        
+        prefix = "egm";
+        break;
+    }
     case VIR_DOMAIN_MEMORY_MODEL_NONE:
     case VIR_DOMAIN_MEMORY_MODEL_LAST:
     default:
