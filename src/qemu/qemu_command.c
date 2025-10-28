@@ -990,6 +990,7 @@ qemuBuildVirtioDevGetConfigDev(const virDomainDeviceDef *device,
             case VIR_DOMAIN_MEMORY_MODEL_DIMM:
             case VIR_DOMAIN_MEMORY_MODEL_NVDIMM:
             case VIR_DOMAIN_MEMORY_MODEL_SGX_EPC:
+            case VIR_DOMAIN_MEMORY_MODEL_EGM:
             case VIR_DOMAIN_MEMORY_MODEL_NONE:
             case VIR_DOMAIN_MEMORY_MODEL_LAST:
                 break;
@@ -3144,6 +3145,7 @@ qemuBuildMemoryGetPagesize(virQEMUDriverConfig *cfg,
         nvdimmPath = mem->source.virtio_pmem.path;
         break;
     case VIR_DOMAIN_MEMORY_MODEL_SGX_EPC:
+    case VIR_DOMAIN_MEMORY_MODEL_EGM:
     case VIR_DOMAIN_MEMORY_MODEL_NONE:
     case VIR_DOMAIN_MEMORY_MODEL_LAST:
         break;
@@ -3343,6 +3345,9 @@ qemuBuildMemoryBackendProps(virJSONValue **backendProps,
         break;
     case VIR_DOMAIN_MEMORY_MODEL_VIRTIO_PMEM:
         nvdimmPath = mem->source.virtio_pmem.path;
+        break;
+    case VIR_DOMAIN_MEMORY_MODEL_EGM:
+        nvdimmPath = mem->source.egm.path;
         break;
     case VIR_DOMAIN_MEMORY_MODEL_NONE:
     case VIR_DOMAIN_MEMORY_MODEL_LAST:
@@ -3559,6 +3564,7 @@ qemuBuildMemoryDimmBackendStr(virCommand *cmd,
 {
     g_autoptr(virJSONValue) props = NULL;
     g_autoptr(virJSONValue) tcProps = NULL;
+    g_autoptr(virJSONValue) egmProps = NULL;
     virBitmap *nodemask = NULL;
     g_autofree char *alias = NULL;
 
@@ -3583,6 +3589,33 @@ qemuBuildMemoryDimmBackendStr(virCommand *cmd,
 
     if (qemuBuildObjectCommandlineFromJSON(cmd, props) < 0)
         return -1;
+
+    if (mem->model == VIR_DOMAIN_MEMORY_MODEL_EGM) {
+        g_autofree char *egmId = NULL;
+        g_autofree char *egmObjStr = NULL;
+        g_auto(virBuffer) buf = VIR_BUFFER_INITIALIZER;
+        const char *basename = NULL;
+
+        /* Extract basename from host path under /dev/ */
+        basename = strrchr(mem->source.egm.path, '/');
+        if (basename && *(basename + 1)) {
+            egmId = g_strdup(basename + 1);
+        } else {
+            egmId = g_strdup(mem->source.egm.path);
+        }
+
+        virBufferAsprintf(&buf, "acpi-egm-memory,id=%s", egmId);
+
+        if (mem->target.egm.pciDev)
+            virBufferAsprintf(&buf, ",pci-dev=%s", mem->target.egm.pciDev);
+
+        if (mem->targetNode >= 0)
+            virBufferAsprintf(&buf, ",node=%d", mem->targetNode);
+
+        egmObjStr = virBufferContentAndReset(&buf);
+
+        virCommandAddArgList(cmd, "-object", egmObjStr, NULL);
+    }
 
     return 0;
 }
@@ -3653,6 +3686,7 @@ qemuBuildMemoryDeviceProps(virQEMUDriverConfig *cfg,
         dynamicMemslots = mem->target.virtio_mem.dynamicMemslots;
         break;
 
+    case VIR_DOMAIN_MEMORY_MODEL_EGM:
     case VIR_DOMAIN_MEMORY_MODEL_SGX_EPC:
     case VIR_DOMAIN_MEMORY_MODEL_NONE:
     case VIR_DOMAIN_MEMORY_MODEL_LAST:
@@ -7184,6 +7218,7 @@ qemuAppendDomainMemoryMachineParams(virBuffer *buf,
         case VIR_DOMAIN_MEMORY_MODEL_DIMM:
         case VIR_DOMAIN_MEMORY_MODEL_VIRTIO_PMEM:
         case VIR_DOMAIN_MEMORY_MODEL_VIRTIO_MEM:
+        case VIR_DOMAIN_MEMORY_MODEL_EGM:
         case VIR_DOMAIN_MEMORY_MODEL_NONE:
         case VIR_DOMAIN_MEMORY_MODEL_LAST:
             break;
@@ -7912,6 +7947,13 @@ qemuBuildNumaCommandLine(virQEMUDriverConfig *cfg,
         hmat = true;
     }
 
+    for (i = 0; i < def->nmems; i++) {
+        if (def->mems[i]->model == VIR_DOMAIN_MEMORY_MODEL_EGM) {
+            if (qemuBuildMemoryDimmBackendStr(cmd, def->mems[i], def, cfg, priv) < 0)
+                goto cleanup;
+        }
+    }
+
     nodeBackends = g_new0(virJSONValue *, ncells);
     nodemask = g_new0(virBitmap *, ncells);
 
@@ -7947,8 +7989,18 @@ qemuBuildNumaCommandLine(virQEMUDriverConfig *cfg,
     for (i = 0; i < ncells; i++) {
         ssize_t initiator = virDomainNumaGetNodeInitiator(def->numa, i);
         unsigned long long memSize = virDomainNumaGetNodeMemorySize(def->numa, i);
+        bool egmBacked = false;
+        size_t k;
 
-        if (needBackend && memSize > 0) {
+        for (k = 0; k < def->nmems; k++) {
+            if (def->mems[k]->model == VIR_DOMAIN_MEMORY_MODEL_EGM &&
+                def->mems[k]->targetNode == (int)i) {
+                egmBacked = true;
+                break;
+            }
+        }
+
+        if (needBackend && memSize > 0 && !egmBacked) {
             g_autoptr(virJSONValue) tcProps = NULL;
 
             if (qemuBuildThreadContextProps(&tcProps, &nodeBackends[i],
@@ -7978,7 +8030,11 @@ qemuBuildNumaCommandLine(virQEMUDriverConfig *cfg,
 
         if (memSize > 0) {
             if (needBackend) {
-                virBufferAsprintf(&buf, ",memdev=ram-node%zu", i);
+                if (egmBacked) {
+                    virBufferAsprintf(&buf, ",memdev=mem%s", def->mems[k]->info.alias);
+                } else {
+                    virBufferAsprintf(&buf, ",memdev=ram-node%zu", i);
+                }
             } else {
                 virBufferAsprintf(&buf, ",mem=%llu", memSize / 1024);
             }
@@ -8042,6 +8098,9 @@ qemuBuildMemoryDeviceCommandLine(virCommand *cmd,
     for (i = 0; i < def->nmems; i++) {
         g_autoptr(virJSONValue) props = NULL;
 
+        if (def->mems[i]->model == VIR_DOMAIN_MEMORY_MODEL_EGM)
+            continue;
+
         if (qemuBuildMemoryDimmBackendStr(cmd, def->mems[i], def, cfg, priv) < 0)
             return -1;
 
@@ -8062,6 +8121,9 @@ qemuBuildMemoryDeviceCommandLine(virCommand *cmd,
         case VIR_DOMAIN_MEMORY_MODEL_SGX_EPC:
             break;
 
+        /* EGM memory backing is via memory-backend-file object */
+        case VIR_DOMAIN_MEMORY_MODEL_EGM:
+            break;
         case VIR_DOMAIN_MEMORY_MODEL_NONE:
         case VIR_DOMAIN_MEMORY_MODEL_LAST:
             break;
