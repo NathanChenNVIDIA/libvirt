@@ -9366,6 +9366,12 @@ Examples:
       The ``pciBus`` attribute notes the index of the controller that an
       IOMMU device is attached to. (QEMU/KVM and ``smmuv3`` model only)
 
+   ``cmdqv``
+      The ``cmdqv`` attribute with possible values ``on`` and ``off`` can be used
+      to enable NVIDIA Tegra241 CMDQV, an extension for ARM SMMUv3 that supports
+      passthrough of physical SMMU-CMDQ linked command queue from host space to VM.
+      :since:`Since 12.1.0` (QEMU/KVM and ``smmuv3`` model only)
+
 In case of ``virtio`` IOMMU device, the ``driver`` element can optionally
 contain ``granule`` subelement that allows to choose which granule will be
 used by default. It is useful when running guests with different page size

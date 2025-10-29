@@ -6330,6 +6330,7 @@ qemuBuildPCINestedSmmuv3DevProps(const virDomainDef *def,
                               "s:driver", "arm-smmuv3",
                               "s:primary-bus", bus,
                               "s:id", iommu->info.alias,
+                              "S:cmdqv", qemuOnOffAuto(iommu->cmdqv),
                               NULL) < 0)
         return NULL;
 

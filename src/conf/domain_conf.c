@@ -14721,6 +14721,10 @@ virDomainIOMMUDefParseXML(virDomainXMLOption *xmlopt,
                           &iommu->pci_bus, -1) < 0)
             return NULL;
 
+        if (virXMLPropTristateSwitch(driver, "cmdqv", VIR_XML_PROP_NONE,
+                                     &iommu->cmdqv) < 0)
+            return NULL;
+
         if ((granule = virXPathNode("./driver/granule", ctxt))) {
             g_autofree char *mode = virXMLPropString(granule, "mode");
             unsigned long long size;
@@ -16824,6 +16828,7 @@ virDomainIOMMUDefEquals(const virDomainIOMMUDef *a,
         a->iotlb != b->iotlb ||
         a->aw_bits != b->aw_bits ||
         a->dma_translation != b->dma_translation ||
+        a->cmdqv != b->cmdqv ||
         a->granule != b->granule)
         return false;
 
@@ -22602,6 +22607,12 @@ virDomainIOMMUDefCheckABIStability(virDomainIOMMUDef *src,
         virReportError(VIR_ERR_CONFIG_UNSUPPORTED,
                        _("Target domain IOMMU device pci_bus value '%1$d' does not match source '%2$d'"),
                        dst->pci_bus, src->pci_bus);
+        return false;
+    }
+    if (src->cmdqv != dst->cmdqv) {
+        virReportError(VIR_ERR_CONFIG_UNSUPPORTED,
+                       _("Target domain IOMMU device cmdqv value '%1$d' does not match source '%2$d'"),
+                       dst->cmdqv, src->cmdqv);
         return false;
     }
     if (src->dma_translation != dst->dma_translation) {
@@ -29021,6 +29032,10 @@ virDomainIOMMUDefFormat(virBuffer *buf,
     if (iommu->pci_bus >= 0) {
         virBufferAsprintf(&driverAttrBuf, " pciBus='%d'",
                           iommu->pci_bus);
+    }
+    if (iommu->cmdqv != VIR_TRISTATE_SWITCH_ABSENT) {
+        virBufferAsprintf(&driverAttrBuf, " cmdqv='%s'",
+                          virTristateSwitchTypeToString(iommu->cmdqv));
     }
     if (iommu->granule != 0) {
         if (iommu->granule == -1) {
