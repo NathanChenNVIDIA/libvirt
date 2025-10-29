@@ -5829,7 +5829,6 @@ qemuValidateDomainDeviceDefIOMMU(const virDomainIOMMUDef *iommu,
         return -1;
     }
 
-    /* cmdqv was added after accel; do not treat ACCEL as a proxy for it. */
     if (iommu->model == VIR_DOMAIN_IOMMU_MODEL_SMMUV3 &&
         iommu->cmdqv != VIR_TRISTATE_SWITCH_ABSENT &&
         !virQEMUCapsGet(qemuCaps, QEMU_CAPS_ARM_SMMUV3_CMDQV)) {
