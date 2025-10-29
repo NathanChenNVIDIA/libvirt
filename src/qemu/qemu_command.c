@@ -6267,8 +6267,19 @@ qemuBuildPCINestedSmmuv3DevProps(const virDomainDef *def,
                               "s:driver", "arm-smmuv3",
                               "s:primary-bus", bus,
                               "s:id", iommu->info.alias,
+                              "b:accel", (iommu->accel == VIR_TRISTATE_SWITCH_ON),
+                              "b:ats", (iommu->ats == VIR_TRISTATE_SWITCH_ON),
+                              "b:ril", (iommu->ril == VIR_TRISTATE_SWITCH_ON),
+                              "b:pasid", (iommu->pasid == VIR_TRISTATE_SWITCH_ON),
                               NULL) < 0)
         return NULL;
+
+    if (iommu->oas > 0) {
+        if (virJSONValueObjectAdd(&props,
+                                  "U:oas", (unsigned long long)iommu->oas,
+                                  NULL) < 0)
+            return NULL;
+    }
 
     return g_steal_pointer(&props);
 }

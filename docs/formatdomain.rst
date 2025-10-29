@@ -9264,6 +9264,33 @@ Example:
       The ``pciBus`` attribute notes the index of the controller that an
       IOMMU device is attached to. (QEMU/KVM and ``smmuv3`` model only)
 
+   ``accel``
+      The ``accel`` attribute with possible values ``on`` and ``off`` can be used
+      to enable hardware acceleration support for smmuv3Dev IOMMU devices.
+      (QEMU/KVM and ``smmuv3`` model only)
+
+   ``ats``
+      The ``ats`` attribute with possible values ``on`` and ``off`` can be used
+      to enable reporting Address Translation Services capability to the guest
+      for smmuv3Dev IOMMU devices with ``accel`` set to ``on``, if the host
+      SMMUv3 supports ATS and the associated passthrough device supports ATS.
+      (QEMU/KVM and ``smmuv3`` model only)
+
+   ``ril``
+      The ``ril`` attribute with possible values ``on`` and ``off`` can be used
+      to report whether Range Invalidation for smmuv3Dev IOMMU devices with
+      ``accel`` set to ``on`` is compatible with host SMMUv3 support.
+      (QEMU/KVM and ``smmuv3`` model only)
+
+   ``pasid``
+      The ``pasid`` attribute with possible values ``on`` and ``off`` can be
+      used to enable Process Address Space ID support for smmuv3Dev IOMMU devices
+      with ``accel`` set to ``on``. (QEMU/KVM and ``smmuv3`` model only)
+
+   ``oas``
+      The ``oas`` attribute sets the output address size in units of bits.
+      (QEMU/KVM and ``smmuv3`` model only)
+
 The ``virtio`` IOMMU devices can further have ``address`` element as described
 in `Device addresses`_ (address has to by type of ``pci``).
 

@@ -14514,6 +14514,26 @@ virDomainIOMMUDefParseXML(virDomainXMLOption *xmlopt,
         if (virXMLPropInt(driver, "pciBus", 10, VIR_XML_PROP_NONE,
                           &iommu->pci_bus, -1) < 0)
             return NULL;
+
+        if (virXMLPropTristateSwitch(driver, "accel", VIR_XML_PROP_NONE,
+                                     &iommu->accel) < 0)
+            return NULL;
+
+        if (virXMLPropTristateSwitch(driver, "ats", VIR_XML_PROP_NONE,
+                                     &iommu->ats) < 0)
+            return NULL;
+
+        if (virXMLPropTristateSwitch(driver, "ril", VIR_XML_PROP_NONE,
+                                     &iommu->ril) < 0)
+            return NULL;
+
+        if (virXMLPropTristateSwitch(driver, "pasid", VIR_XML_PROP_NONE,
+                                     &iommu->pasid) < 0)
+            return NULL;
+
+        if (virXMLPropUInt(driver, "oas", 10, VIR_XML_PROP_NONE,
+                           &iommu->oas) < 0)
+            return NULL;
     }
 
     if (virDomainDeviceInfoParseXML(xmlopt, node, ctxt,
@@ -16565,7 +16585,13 @@ virDomainIOMMUDefEquals(const virDomainIOMMUDef *a,
         a->eim != b->eim ||
         a->iotlb != b->iotlb ||
         a->aw_bits != b->aw_bits ||
-        a->dma_translation != b->dma_translation)
+        a->dma_translation != b->dma_translation ||
+        a->pci_bus != b->pci_bus ||
+        a->accel != b->accel ||
+        a->ats != b->ats ||
+        a->ril != b->ril ||
+        a->pasid != b->pasid ||
+        a->oas != b->oas)
         return false;
 
     if (a->info.type != VIR_DOMAIN_DEVICE_ADDRESS_TYPE_NONE &&
@@ -22260,6 +22286,36 @@ virDomainIOMMUDefCheckABIStability(virDomainIOMMUDef *src,
         virReportError(VIR_ERR_CONFIG_UNSUPPORTED,
                        _("Target domain IOMMU device pci_bus value '%1$d' does not match source '%2$d'"),
                        dst->pci_bus, src->pci_bus);
+        return false;
+    }
+    if (src->accel != dst->accel) {
+        virReportError(VIR_ERR_CONFIG_UNSUPPORTED,
+                       _("Target domain IOMMU device accel value '%1$d' does not match source '%2$d'"),
+                       dst->accel, src->accel);
+        return false;
+    }
+    if (src->ats != dst->ats) {
+        virReportError(VIR_ERR_CONFIG_UNSUPPORTED,
+                       _("Target domain IOMMU device ATS value '%1$d' does not match source '%2$d'"),
+                       dst->ats, src->ats);
+        return false;
+    }
+    if (src->ril != dst->ril) {
+        virReportError(VIR_ERR_CONFIG_UNSUPPORTED,
+                       _("Target domain IOMMU device ril value '%1$d' does not match source '%2$d'"),
+                       dst->ril, src->ril);
+        return false;
+    }
+    if (src->pasid != dst->pasid) {
+        virReportError(VIR_ERR_CONFIG_UNSUPPORTED,
+                       _("Target domain IOMMU device pasid value '%1$d' does not match source '%2$d'"),
+                       dst->pasid, src->pasid);
+        return false;
+    }
+    if (src->oas != dst->oas) {
+        virReportError(VIR_ERR_CONFIG_UNSUPPORTED,
+                       _("Target domain IOMMU device oas value '%1$d' does not match source '%2$d'"),
+                       dst->oas, src->oas);
         return false;
     }
     if (src->dma_translation != dst->dma_translation) {
@@ -28607,6 +28663,26 @@ virDomainIOMMUDefFormat(virBuffer *buf,
     if (iommu->pci_bus >= 0) {
         virBufferAsprintf(&driverAttrBuf, " pciBus='%d'",
                           iommu->pci_bus);
+    }
+    if (iommu->accel != VIR_TRISTATE_SWITCH_ABSENT) {
+        virBufferAsprintf(&driverAttrBuf, " accel='%s'",
+                          virTristateSwitchTypeToString(iommu->accel));
+    }
+    if (iommu->ats != VIR_TRISTATE_SWITCH_ABSENT) {
+        virBufferAsprintf(&driverAttrBuf, " ats='%s'",
+                          virTristateSwitchTypeToString(iommu->ats));
+    }
+    if (iommu->ril != VIR_TRISTATE_SWITCH_ABSENT) {
+        virBufferAsprintf(&driverAttrBuf, " ril='%s'",
+                          virTristateSwitchTypeToString(iommu->ril));
+    }
+    if (iommu->pasid != VIR_TRISTATE_SWITCH_ABSENT) {
+        virBufferAsprintf(&driverAttrBuf, " pasid='%s'",
+                          virTristateSwitchTypeToString(iommu->pasid));
+    }
+    if (iommu->oas > 0) {
+        virBufferAsprintf(&driverAttrBuf, " oas='%d'",
+                          iommu->oas);
     }
 
     virXMLFormatElement(&childBuf, "driver", &driverAttrBuf, NULL);
