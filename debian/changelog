@@ -1,3 +1,11 @@
+libvirt (11.9.0+nvidia1-1) noble; urgency=medium
+
+  * Update vEGM series to match RFCv2.
+  * Update nested smmuv3 series to match v3 non-accel series.
+  * Update iommufd series to match v1 separated iommufd series.
+
+ -- Nathan Chen <nathanc@nvidia.com>  Thu, 06 Nov 2025 18:39:22 +0000
+
 libvirt (11.8.0+nvidia1-1) noble; urgency=medium
 
   * Import basic packaging from Noble.
