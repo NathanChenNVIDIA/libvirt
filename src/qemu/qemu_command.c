@@ -5248,12 +5248,14 @@ qemuBuildAcpiNodesetProps(virCommand *cmd,
 static int
 qemuBuildHostdevCommandLine(virCommand *cmd,
                             const virDomainDef *def,
-                            virQEMUCaps *qemuCaps)
+                            virQEMUCaps *qemuCaps,
+                            virDomainObj *vm)
 {
     size_t i;
     g_autoptr(virJSONValue) props = NULL;
     int iommufd = 0;
     const char * iommufdId = "iommufd0";
+    qemuDomainObjPrivate *priv = vm->privateData;
 
     for (i = 0; i < def->nhostdevs; i++) {
         virDomainHostdevDef *hostdev = def->hostdevs[i];
@@ -5284,8 +5286,10 @@ qemuBuildHostdevCommandLine(virCommand *cmd,
 
             if (subsys->u.pci.driver.iommufd == VIR_TRISTATE_BOOL_YES && iommufd == 0) {
                 iommufd = 1;
+                virCommandPassFD(cmd, priv->iommufd, VIR_COMMAND_PASS_FD_CLOSE_PARENT);
                 if (qemuMonitorCreateObjectProps(&props, "iommufd",
                                                  iommufdId,
+                                                 "S:fd", g_strdup_printf("%d", priv->iommufd),
                                                  NULL) < 0)
                     return -1;
 
@@ -11058,7 +11062,7 @@ qemuBuildCommandLine(virDomainObj *vm,
     if (qemuBuildRedirdevCommandLine(cmd, def, qemuCaps) < 0)
         return NULL;
 
-    if (qemuBuildHostdevCommandLine(cmd, def, qemuCaps) < 0)
+    if (qemuBuildHostdevCommandLine(cmd, def, qemuCaps, vm) < 0)
         return NULL;
 
     if (migrateURI)
