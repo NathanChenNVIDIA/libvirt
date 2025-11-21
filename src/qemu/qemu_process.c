@@ -10273,6 +10273,38 @@ qemuProcessHandleNbdkitExit(qemuNbdkitProcess *nbdkit,
 }
 
 /**
+ * qemuProcessOpenIommuFd:
+ * @vm: domain object
+ * @iommuFd: returned file descriptor
+ *
+ * Opens /dev/iommu file descriptor for the VM.
+ *
+ * Returns: 0 on success, -1 on failure
+ */
+static int
+qemuProcessOpenIommuFd(virDomainObj *vm, int *iommuFd)
+{
+    int fd = -1;
+
+    VIR_DEBUG("Opening IOMMU FD for domain %s", vm->def->name);
+
+    if ((fd = open("/dev/iommu", O_RDWR | O_CLOEXEC)) < 0) {
+        if (errno == ENOENT) {
+            virReportError(VIR_ERR_CONFIG_UNSUPPORTED, "%s",
+                           _("IOMMU FD support requires /dev/iommu device"));
+        } else {
+            virReportSystemError(errno, "%s",
+                                 _("cannot open /dev/iommu"));
+        }
+        return -1;
+    }
+
+    *iommuFd = fd;
+    VIR_DEBUG("Opened IOMMU FD %d for domain %s", fd, vm->def->name);
+    return 0;
+}
+
+/**
  * qemuProcessOpenVfioDeviceFd:
  * @hostdev: host device definition
  * @vfioFd: returned file descriptor
@@ -10329,6 +10361,8 @@ qemuProcessOpenVfioDeviceFd(virDomainHostdevDef *hostdev,
 int
 qemuProcessOpenVfioFds(virDomainObj *vm)
 {
+    qemuDomainObjPrivate *priv = vm->privateData;
+    bool needsIommuFd = false;
     size_t i;
 
     /* Check if we have any hostdevs that need VFIO FDs */
@@ -10341,6 +10375,8 @@ qemuProcessOpenVfioFds(virDomainObj *vm)
 
             if (hostdev->source.subsys.u.pci.driver.name == VIR_DEVICE_HOSTDEV_PCI_DRIVER_NAME_VFIO &&
                 hostdev->source.subsys.u.pci.driver.iommufd == VIR_TRISTATE_BOOL_YES) {
+
+                needsIommuFd = true;
 
                 if (!hostdev->privateData) {
                     if (!(hostdev->privateData = qemuDomainHostdevPrivateNew()))
@@ -10363,6 +10399,18 @@ qemuProcessOpenVfioFds(virDomainObj *vm)
         }
     }
 
+    /* Open IOMMU FD if needed */
+    if (needsIommuFd) {
+        int iommuFd = -1;
+
+        if (qemuProcessOpenIommuFd(vm, &iommuFd) < 0)
+            goto error;
+
+        priv->iommufd = iommuFd;
+
+        VIR_DEBUG("Stored IOMMU FD %d", priv->iommufd);
+    }
+
     return 0;
 
  error:
@@ -10379,6 +10427,7 @@ qemuProcessOpenVfioFds(virDomainObj *vm)
 void
 qemuProcessCloseVfioFds(virDomainObj *vm)
 {
+    qemuDomainObjPrivate *priv = vm->privateData;
     size_t i;
 
     /* Close all VFIO device FDs */
@@ -10395,5 +10444,12 @@ qemuProcessCloseVfioFds(virDomainObj *vm)
             VIR_DEBUG("Closing VFIO device FD %d", hostdevPriv->vfioDeviceFd);
             VIR_FORCE_CLOSE(hostdevPriv->vfioDeviceFd);
         }
+    }
+
+    /* Close IOMMU FD */
+    if (priv->iommufd >= 0) {
+        VIR_DEBUG("Closing IOMMU FD %d", priv->iommufd);
+        VIR_FORCE_CLOSE(priv->iommufd);
+        priv->iommufd = -1;
     }
 }
