@@ -7,7 +7,7 @@ on:
     branches:
       - 'nvidia/latest'
       - 'mochs/latest'
-  
+
   # Allow manual triggering of the workflow from the GitHub UI
   workflow_dispatch:
 
@@ -29,10 +29,10 @@ jobs:
       - name: Install Build Dependencies
         run: |
           sudo apt-get update
-          
+
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y devscripts equivs fakeroot git-buildpackage
-          
-          # Use mk-build-deps to parse debian/control, create a dummy package 
+
+          # Use mk-build-deps to parse debian/control, create a dummy package
           # with all build dependencies, and install it. This ensures all
           # required build dependencies are present.
           # The --no-install-recommends flag keeps the environment minimal.
@@ -49,7 +49,7 @@ jobs:
           # dpkg-parsechangelog is in the dpkg-dev package, a dependency of devscripts.
           export SOURCE_NAME=$(dpkg-parsechangelog -S Source)
           export UPSTREAM_VERSION=$(dpkg-parsechangelog -S Version | sed 's/^[0-9]\+://' | sed 's/-[^-]*$//')
-          
+
           git config --global user.email "robot@builder.local"
           git config --global user.name "Builder Robot"
           # Create the .orig.tar.gz in the parent directory.
@@ -88,7 +88,7 @@ jobs:
           current_dir=$(pwd)
           cd deb
           mkdir source_package_artifacts
-          
+
           # Iterate over all the generated build artifacts.
           for file in *.dsc *.orig.tar.* *.debian.tar.* *.changes *source.build *source.buildinfo; do
             # Check if files matching the pattern exist before processing.
@@ -96,7 +96,7 @@ jobs:
               # Calculate the MD5 sum and format it for the annotation.
               # The output of md5sum is "CHECKSUM  FILENAME".
               checksum=$(md5sum "$file")
-              
+
               # Echo the checksum as a workflow notice annotation.
               # This will make it easily visible in the GitHub Actions UI.
               echo "::notice title=MD5 Checksum::$checksum"
@@ -111,5 +111,5 @@ jobs:
         with:
           # Name of the artifact bundle to be displayed in the GitHub UI
           name: debian-source-package
-          
+
           path: source_package_artifacts

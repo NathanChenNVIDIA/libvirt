@@ -2521,12 +2521,12 @@ virSecuritySELinuxRestoreHostdevSubsysLabel(virSecurityManager *mgr,
 
                 if (vfiofdDev) {
                     int vfioFdRet, iommufdRet;
-                    vfioFdRet = virSecuritySELinuxRestoreFileLabel(mgr, vfiofdDev, false, false);
+                    vfioFdRet = virSecuritySELinuxRestoreFileLabel(mgr, vfiofdDev, false);
                     if (vfioFdRet < 0)
                         ret = vfioFdRet;
 
                     iommufdDir = g_strdup("/dev/iommu");
-                    iommufdRet = virSecuritySELinuxRestoreFileLabel(mgr, iommufdDir, false, false);
+                    iommufdRet = virSecuritySELinuxRestoreFileLabel(mgr, iommufdDir, false);
                     if (iommufdRet < 0)
                         ret = iommufdRet;
                 } else {
