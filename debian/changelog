@@ -1,3 +1,13 @@
+libvirt (11.9.0+nvidia2-1) noble; urgency=medium
+
+  * NVIDIA: SAUCE: qemu: De-couple vEGM ID from host chardev name
+  * NVIDIA: [Packaging] Exclude debian/ and .github/ directories from
+    syntax check
+  * NVIDIA: SAUCE: conf: Include EGM model in virDomainMemoryIsVirtioModel
+    switch statement
+
+ -- Nathan Chen <nathanc@nvidia.com>  Mon, 24 Nov 2025 19:29:45 -0800
+
 libvirt (11.9.0+nvidia1-1) noble; urgency=medium
 
   * Update vEGM series to match RFCv2.
