@@ -135,6 +135,21 @@ VIR_ENUM_IMPL(qemuACPITableSIG,
               "SLIC",
               "MSDM");
 
+typedef struct _qemuEGMBackendInfo {
+    char *alias;
+    unsigned long long totalSize;
+    bool created;
+    virDomainMemoryDef *firstMem;  /* Pointer to first device for this path */
+} qemuEGMBackendInfo;
+
+static void
+qemuEGMBackendInfoFree(qemuEGMBackendInfo *info)
+{
+    if (!info)
+        return;
+    g_free(info->alias);
+    g_free(info);
+}
 
 const char *
 qemuAudioDriverTypeToString(virDomainAudioType type)
@@ -3562,13 +3577,17 @@ qemuBuildMemoryDimmBackendStr(virCommand *cmd,
                               virDomainMemoryDef *mem,
                               virDomainDef *def,
                               virQEMUDriverConfig *cfg,
-                              qemuDomainObjPrivate *priv)
+                              qemuDomainObjPrivate *priv,
+                              GHashTable *egmBackends)
 {
     g_autoptr(virJSONValue) props = NULL;
     g_autoptr(virJSONValue) tcProps = NULL;
-    g_autoptr(virJSONValue) egmProps = NULL;
     virBitmap *nodemask = NULL;
     g_autofree char *alias = NULL;
+    unsigned long long originalSize = 0;
+    bool isEGM = (mem->model == VIR_DOMAIN_MEMORY_MODEL_EGM);
+    bool shouldCreateBackend = true;
+    qemuEGMBackendInfo *egmInfo = NULL;
 
     if (!mem->info.alias) {
         virReportError(VIR_ERR_INTERNAL_ERROR, "%s",
@@ -3578,38 +3597,57 @@ qemuBuildMemoryDimmBackendStr(virCommand *cmd,
 
     alias = g_strdup_printf("mem%s", mem->info.alias);
 
-    if (qemuBuildMemoryBackendProps(&props, alias, cfg, priv,
-                                    def, mem, true, false, &nodemask) < 0)
-        return -1;
+    /* Handle EGM shared backend logic */
+    if (isEGM && egmBackends) {
+        const char *egmPath = mem->source.egm.path;
+        egmInfo = g_hash_table_lookup(egmBackends, egmPath);
 
-    if (qemuBuildThreadContextProps(&tcProps, &props, def, priv, nodemask) < 0)
-        return -1;
+        if (egmInfo) {
+            alias = g_strdup(egmInfo->alias);
+            if (egmInfo->created) {
+                /* Backend already created, skip backend creation */
+                shouldCreateBackend = false;
+            } else {
+                /* First device for this path - temporarily use accumulated size */
+                originalSize = mem->size;
+                mem->size = egmInfo->totalSize;
+                egmInfo->created = true;
+            }
+        }
+    }
 
-    if (tcProps &&
-        qemuBuildObjectCommandlineFromJSON(cmd, tcProps) < 0)
-        return -1;
-
-    if (qemuBuildObjectCommandlineFromJSON(cmd, props) < 0)
-        return -1;
-
-    if (mem->model == VIR_DOMAIN_MEMORY_MODEL_EGM) {
-        g_autofree char *egmId = NULL;
-        g_autofree char *egmObjStr = NULL;
-        g_auto(virBuffer) buf = VIR_BUFFER_INITIALIZER;
-        const char *basename = NULL;
-
-        /* Extract basename from host path under /dev/ */
-        basename = strrchr(mem->source.egm.path, '/');
-        if (basename && *(basename + 1)) {
-            egmId = g_strdup(basename + 1);
-        } else {
-            egmId = g_strdup(mem->source.egm.path);
+    if (shouldCreateBackend) {
+        /* Use existing function unchanged */
+        if (qemuBuildMemoryBackendProps(&props, alias, cfg, priv,
+                                        def, mem, true, false, &nodemask) < 0) {
+            if (originalSize > 0)
+                mem->size = originalSize;  /* Restore on error */
+            return -1;
         }
 
-        virBufferAsprintf(&buf, "acpi-egm-memory,id=%s", egmId);
+        /* Restore original size after backend props are built */
+        if (originalSize > 0)
+            mem->size = originalSize;
+
+        if (qemuBuildThreadContextProps(&tcProps, &props, def, priv, nodemask) < 0)
+            return -1;
+
+        if (tcProps &&
+            qemuBuildObjectCommandlineFromJSON(cmd, tcProps) < 0)
+            return -1;
+
+        if (qemuBuildObjectCommandlineFromJSON(cmd, props) < 0)
+            return -1;
+    }
+
+    if (isEGM) {
+        g_autofree char *egmObjStr = NULL;
+        g_auto(virBuffer) buf = VIR_BUFFER_INITIALIZER;
+
+        virBufferAsprintf(&buf, "acpi-egm-memory,id=%s", mem->info.alias);
 
         if (mem->target.egm.pciDev)
-            virBufferAsprintf(&buf, ",pci-dev=%s", mem->target.egm.pciDev);
+           virBufferAsprintf(&buf, ",pci-dev=%s", mem->target.egm.pciDev);
 
         if (mem->targetNode >= 0)
             virBufferAsprintf(&buf, ",node=%d", mem->targetNode);
@@ -7935,6 +7973,8 @@ qemuBuildNumaCommandLine(virQEMUDriverConfig *cfg,
     size_t ncells = virDomainNumaGetNodeCount(def->numa);
     ssize_t masterInitiator = -1;
     int rc;
+    g_autoptr(GHashTable) egmBackends = NULL;
+    size_t egmBackendCount = 0;
 
     if (!virDomainNumatuneNodesetIsAvailable(def->numa, priv->autoNodeset))
         goto cleanup;
@@ -7949,9 +7989,33 @@ qemuBuildNumaCommandLine(virQEMUDriverConfig *cfg,
         hmat = true;
     }
 
+    /* Pre-scan EGM devices to group by path and calculate total sizes */
+    egmBackends = g_hash_table_new_full(g_str_hash, g_str_equal, g_free,
+                                        (GDestroyNotify)qemuEGMBackendInfoFree);
+
     for (i = 0; i < def->nmems; i++) {
         if (def->mems[i]->model == VIR_DOMAIN_MEMORY_MODEL_EGM) {
-            if (qemuBuildMemoryDimmBackendStr(cmd, def->mems[i], def, cfg, priv) < 0)
+            const char *egmPath = def->mems[i]->source.egm.path;
+            qemuEGMBackendInfo *info = g_hash_table_lookup(egmBackends, egmPath);
+
+            if (!info) {
+                info = g_new0(qemuEGMBackendInfo, 1);
+                info->alias = g_strdup_printf("memegm%zu", egmBackendCount);
+                egmBackendCount++;
+                info->totalSize = def->mems[i]->size;
+                info->created = false;
+                info->firstMem = def->mems[i];
+                g_hash_table_insert(egmBackends, g_strdup(egmPath), info);
+            } else {
+                info->totalSize += def->mems[i]->size;
+            }
+        }
+    }
+
+    /* Build the actual backend and device objects */
+    for (i = 0; i < def->nmems; i++) {
+        if (def->mems[i]->model == VIR_DOMAIN_MEMORY_MODEL_EGM) {
+            if (qemuBuildMemoryDimmBackendStr(cmd, def->mems[i], def, cfg, priv, egmBackends) < 0)
                 goto cleanup;
         }
     }
@@ -8033,7 +8097,11 @@ qemuBuildNumaCommandLine(virQEMUDriverConfig *cfg,
         if (memSize > 0) {
             if (needBackend) {
                 if (egmBacked) {
-                    virBufferAsprintf(&buf, ",memdev=mem%s", def->mems[k]->info.alias);
+                    /* NEW: Look up the actual backend alias for EGM */
+                    const char *egmPath = def->mems[k]->source.egm.path;
+                    qemuEGMBackendInfo *egmInfo = g_hash_table_lookup(egmBackends, egmPath);
+                    const char *backendAlias = egmInfo ? egmInfo->alias : def->mems[k]->info.alias;
+                    virBufferAsprintf(&buf, ",memdev=%s", backendAlias);
                 } else {
                     virBufferAsprintf(&buf, ",memdev=ram-node%zu", i);
                 }
@@ -8103,7 +8171,7 @@ qemuBuildMemoryDeviceCommandLine(virCommand *cmd,
         if (def->mems[i]->model == VIR_DOMAIN_MEMORY_MODEL_EGM)
             continue;
 
-        if (qemuBuildMemoryDimmBackendStr(cmd, def->mems[i], def, cfg, priv) < 0)
+        if (qemuBuildMemoryDimmBackendStr(cmd, def->mems[i], def, cfg, priv, NULL) < 0)
             return -1;
 
         switch (def->mems[i]->model) {
