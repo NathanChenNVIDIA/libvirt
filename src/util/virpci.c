@@ -3320,3 +3320,45 @@ virPCIDeviceAddressFree(virPCIDeviceAddress *address)
 {
     g_free(address);
 }
+
+/**
+ * virPCIDeviceGetVfioPath:
+ * @addr: host device PCI address
+ * @vfioPath: returned VFIO device path
+ *
+ * Constructs the VFIO device path for a PCI hostdev.
+ *
+ * Returns: 0 on success, -1 on failure
+ */
+int
+virPCIDeviceGetVfioPath(virPCIDeviceAddress *addr,
+                        char **vfioPath)
+{
+    g_autofree char *addrStr = NULL;
+
+    *vfioPath = NULL;
+    addrStr = virPCIDeviceAddressAsString(addr);
+
+    /* First try: Direct lookup in device's vfio-dev subdirectory */
+    {
+        g_autofree char *sysfsPath = NULL;
+        g_autoptr(DIR) dir = NULL;
+        struct dirent *entry = NULL;
+
+        sysfsPath = g_strdup_printf("/sys/bus/pci/devices/%s/vfio-dev/", addrStr);
+
+        if (virDirOpen(&dir, sysfsPath) == 1) {
+            while (virDirRead(dir, &entry, sysfsPath) > 0) {
+                if (STRPREFIX(entry->d_name, "vfio")) {
+                    *vfioPath = g_strdup_printf("/dev/vfio/devices/%s", entry->d_name);
+                    return 0;
+                }
+            }
+        }
+    }
+
+    virReportError(VIR_ERR_INTERNAL_ERROR,
+                  _("cannot find VFIO device for PCI device %1$s"),
+                  addrStr);
+    return -1;
+}
