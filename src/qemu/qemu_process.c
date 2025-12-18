@@ -104,6 +104,7 @@
 #include "backup_conf.h"
 #include "storage_file_probe.h"
 #include "virpci.h"
+#include "viriommufd.h"
 
 #include "logging/log_manager.h"
 #include "logging/log_protocol.h"
@@ -10389,6 +10390,12 @@ qemuProcessOpenIommuFd(virDomainObj *vm)
             virReportSystemError(errno, "%s",
                                  _("cannot open /dev/iommu"));
         }
+        return -1;
+    }
+
+    /* Set per-process memory accounting */
+    if (virIOMMUFDSetRLimitMode(fd, true) < 0) {
+        VIR_FORCE_CLOSE(fd);
         return -1;
     }
 
