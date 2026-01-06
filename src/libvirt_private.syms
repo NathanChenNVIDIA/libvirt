@@ -2652,6 +2652,10 @@ virInhibitorRelease;
 virInitctlFifos;
 virInitctlSetRunLevel;
 
+# util/viriommufd.h
+virIOMMUFDSetRLimitMode;
+virIOMMUFDSupported;
+
 # util/viriscsi.h
 virISCSIConnectionLogin;
 virISCSIConnectionLogout;
