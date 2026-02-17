@@ -9347,6 +9347,13 @@ Examples:
       passthrough of physical SMMU-CMDQ linked command queue from host space to VM.
       :since:`Since 12.1.0` (QEMU/KVM and ``smmuv3`` model only)
 
+   ``identifier``
+      The ``identifier`` attribute can be used to provide a stable per-device
+      identifier independent of enumeration order. This attribute is required for
+      supporting NVIDIA Tegra241 CMDQV, and is used to correctly associate the
+      CMDQV DSDT device with its SMMU.
+      :since:`Since 12.1.0` (QEMU/KVM and ``smmuv3`` model only)
+
 In case of ``virtio`` IOMMU device, the ``driver`` element can optionally
 contain ``granule`` subelement that allows to choose which granule will be
 used by default. It is useful when running guests with different page size

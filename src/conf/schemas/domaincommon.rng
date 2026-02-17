@@ -6358,6 +6358,11 @@
               </attribute>
             </optional>
             <optional>
+              <attribute name="identifier">
+                <data type="unsignedInt"/>
+              </attribute>
+            </optional>
+            <optional>
               <element name="granule">
                 <choice>
                   <group>

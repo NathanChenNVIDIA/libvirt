@@ -2852,6 +2852,8 @@ virDomainIOMMUDefNew(void)
 
     iommu->pci_bus = -1;
 
+    iommu->identifier = -1;
+
     return g_steal_pointer(&iommu);
 }
 
@@ -14684,6 +14686,10 @@ virDomainIOMMUDefParseXML(virDomainXMLOption *xmlopt,
                                      &iommu->cmdqv) < 0)
             return NULL;
 
+        if (virXMLPropInt(driver, "identifier", 10, VIR_XML_PROP_NONE,
+                          &iommu->identifier, -1) < 0)
+            return NULL;
+
         if ((granule = virXPathNode("./driver/granule", ctxt))) {
             g_autofree char *mode = virXMLPropString(granule, "mode");
             unsigned long long size;
@@ -16786,6 +16792,7 @@ virDomainIOMMUDefEquals(const virDomainIOMMUDef *a,
         a->aw_bits != b->aw_bits ||
         a->dma_translation != b->dma_translation ||
         a->cmdqv != b->cmdqv ||
+        a->identifier != b->identifier ||
         a->granule != b->granule)
         return false;
 
@@ -22547,6 +22554,12 @@ virDomainIOMMUDefCheckABIStability(virDomainIOMMUDef *src,
                        _("Target domain IOMMU device cmdqv value '%1$d' does not match source '%2$d'"),
                        dst->cmdqv, src->cmdqv);
         return false;
+    }
+    if (src->identifier != dst->identifier) {
+        virReportError(VIR_ERR_CONFIG_UNSUPPORTED,
+                       _("Target domain IOMMU device identifier '%1$d' does not match source '%2$d'"),
+                       dst->identifier,
+                       src->identifier);
     }
     if (src->dma_translation != dst->dma_translation) {
         virReportError(VIR_ERR_CONFIG_UNSUPPORTED,
@@ -28955,6 +28968,10 @@ virDomainIOMMUDefFormat(virBuffer *buf,
     if (iommu->cmdqv != VIR_TRISTATE_SWITCH_ABSENT) {
         virBufferAsprintf(&driverAttrBuf, " cmdqv='%s'",
                           virTristateSwitchTypeToString(iommu->cmdqv));
+    }
+    if (iommu->identifier >= 0) {
+        virBufferAsprintf(&driverAttrBuf, " identifier='%d'",
+                          iommu->identifier);
     }
     if (iommu->granule != 0) {
         if (iommu->granule == -1) {
