@@ -6290,6 +6290,11 @@ qemuBuildPCINestedSmmuv3DevProps(const virDomainDef *def,
                               "s:driver", "arm-smmuv3",
                               "s:primary-bus", bus,
                               "s:id", iommu->info.alias,
+                              "B:accel", (iommu->accel == VIR_TRISTATE_SWITCH_ON),
+                              "T:ats", iommu->ats,
+                              "T:ril", iommu->ril,
+                              "k:ssidsize", iommu->ssid_size,
+                              "k:oas", iommu->oas,
                               NULL) < 0)
         return NULL;
 
