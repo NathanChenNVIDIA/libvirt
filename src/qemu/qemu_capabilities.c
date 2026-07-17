@@ -767,6 +767,7 @@ VIR_ENUM_IMPL(virQEMUCaps,
 
               /* 495 */
               "blockdev-mirror.target-is-zero", /* QEMU_CAPS_BLOCKDEV_MIRROR_TARGET_IS_ZERO */
+              "arm-smmuv3.smmu_per_bus", /* QEMU_CAPS_ARM_SMMUV3 */
     );
 
 
@@ -1643,6 +1644,10 @@ static struct virQEMUCapsDevicePropsFlags virQEMUCapsDevicePropsAMDIOMMU[] = {
     { "xtsup", QEMU_CAPS_AMD_IOMMU_XTSUP, NULL },
 };
 
+static struct virQEMUCapsDevicePropsFlags virQEMUCapsDevicePropsArmSmmuv3[] = {
+    { "smmu_per_bus", QEMU_CAPS_ARM_SMMUV3, NULL },
+};
+
 /* see documentation for virQEMUQAPISchemaPathGet for the query format */
 static struct virQEMUCapsStringFlags virQEMUCapsQMPSchemaQueries[] = {
     { "blockdev-add/arg-type/+file/drop-cache", QEMU_CAPS_MIGRATION_FILE_DROP_CACHE },
@@ -1808,6 +1813,9 @@ static virQEMUCapsDeviceTypeProps virQEMUCapsDeviceProps[] = {
     { "amd-iommu", virQEMUCapsDevicePropsAMDIOMMU,
       G_N_ELEMENTS(virQEMUCapsDevicePropsAMDIOMMU),
       QEMU_CAPS_AMD_IOMMU },
+    { "arm-smmuv3", virQEMUCapsDevicePropsArmSmmuv3,
+      G_N_ELEMENTS(virQEMUCapsDevicePropsArmSmmuv3),
+      -1 },
     { "scsi-block", virQEMUCapsDevicePropsSCSIBlock,
       G_N_ELEMENTS(virQEMUCapsDevicePropsSCSIBlock),
       -1 },
@@ -2823,6 +2831,10 @@ virQEMUCapsProbeQMPDeviceProperties(virQEMUCaps *qemuCaps,
 
         if (device->capsCondition >= 0 &&
             !virQEMUCapsGet(qemuCaps, device->capsCondition))
+            continue;
+
+        if (STREQ(device->type, "arm-smmuv3") &&
+            !ARCH_IS_ARM(qemuCaps->arch))
             continue;
 
         if (!(qemuprops = qemuMonitorGetDeviceProps(mon, device->type)))

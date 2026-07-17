@@ -5711,7 +5711,14 @@ qemuValidateDomainDeviceDefIOMMU(const virDomainIOMMUDef *iommu,
                            virDomainIOMMUModelTypeToString(iommu->model));
             return -1;
         }
-        if (!virQEMUCapsGet(qemuCaps, QEMU_CAPS_MACHINE_VIRT_IOMMU)) {
+        if (iommu->pci_bus >= 0) {
+            if (!virQEMUCapsGet(qemuCaps, QEMU_CAPS_ARM_SMMUV3)) {
+                virReportError(VIR_ERR_CONFIG_UNSUPPORTED,
+                               _("IOMMU device: Setting pciBus for '%1$s' is not supported with this QEMU binary"),
+                               virDomainIOMMUModelTypeToString(iommu->model));
+                return -1;
+            }
+        } else if (!virQEMUCapsGet(qemuCaps, QEMU_CAPS_MACHINE_VIRT_IOMMU)) {
             virReportError(VIR_ERR_CONFIG_UNSUPPORTED,
                            _("IOMMU device: '%1$s' is not supported with this QEMU binary"),
                            virDomainIOMMUModelTypeToString(iommu->model));
